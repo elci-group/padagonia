@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Releases — PADAGONIA</title>
+  <meta name="description" content="Download PADAGONIA releases and read release notes." />
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml" />
+</head>
+<body>
+  <nav>
+    <div class="nav-inner">
+      <a class="brand" href="index.html">
+        <img src="assets/logo.svg" alt="PADAGONIA logo" />
+        PADAGONIA
+      </a>
+      <ul class="nav-links">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="releases.html">Releases</a></li>
+        <li><a href="deprecated.html">Source Archive</a></li>
+        <li><a href="pro.html">Pro</a></li>
+        <li><a class="nav-cta" href="https://github.com/elci-group/padagonia">GitHub</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <section>
+    <h2>Releases</h2>
+    <p class="section-lead">
+      The latest PADAGONIA builds, source archives, and release notes. All binaries and checksums are published on GitHub.
+    </p>
+
+    <div id="release-status" class="status">Loading releases from GitHub…</div>
+    <div id="releases" class="release-list" aria-live="polite"></div>
+  </section>
+
+  <footer>
+    <p>
+      © Padagonia Project ·
+      <a href="https://github.com/elci-group/padagonia">GitHub</a> ·
+      <a href="index.html">Home</a>
+    </p>
+  </footer>
+
+  <script src="js/releases.js"></script>
+</body>
+</html>

@@ -13,6 +13,10 @@
   designed for autonomous AI agents.
 </p>
 
+<p align="center">
+  🌸 <a href="https://elci-group.github.io/padagonia/">Visit the PADAGONIA website</a> 🌸
+</p>
+
 ## Features
 
 - Interned ontology (labels, relations, property keys) for compact storage.

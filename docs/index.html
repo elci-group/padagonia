@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PADAGONIA — Information Substrate for AI Agents</title>
+  <meta name="description" content="PADAGONIA is an ontology-native, immutable, provenance-rich graph store designed for autonomous AI agents." />
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml" />
+</head>
+<body>
+  <nav>
+    <div class="nav-inner">
+      <a class="brand" href="index.html">
+        <img src="assets/logo.svg" alt="PADAGONIA logo" />
+        PADAGONIA
+      </a>
+      <ul class="nav-links">
+        <li><a href="releases.html">Releases</a></li>
+        <li><a href="deprecated.html">Source Archive</a></li>
+        <li><a href="pro.html">Pro</a></li>
+        <li><a class="nav-cta" href="https://github.com/elci-group/padagonia">GitHub</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <img src="assets/logo.svg" alt="PADAGONIA logo" width="180" />
+    <h1>PADAGONIA</h1>
+    <p class="acronym">
+      <strong>P</strong>arallelisation <strong>A</strong>ccessible <strong>D</strong>atabase
+      <strong>A</strong>dvance <strong>G</strong>enerative <strong>O</strong>ntology
+      <strong>N</strong>etworked <strong>I</strong>nformation <strong>A</strong>rchitecture
+    </p>
+    <p class="tagline">
+      An ontology-native, immutable, provenance-rich graph store built for thousands of autonomous AI agents reading, writing, reasoning, and coordinating at once.
+    </p>
+    <div class="btn-row">
+      <a class="btn btn-primary" href="releases.html">Download latest release</a>
+      <a class="btn btn-secondary" href="https://github.com/elci-group/padagonia">View on GitHub</a>
+    </div>
+  </header>
+
+  <section id="features">
+    <h2>Why PADAGONIA?</h2>
+    <p class="section-lead">
+      Traditional databases were built for sequential software written by humans. PADAGONIA is built for distributed agentic intelligence.
+    </p>
+    <div class="card-grid">
+      <article class="card">
+        <div class="card-icon">🌿</div>
+        <h3>Everything is a Node</h3>
+        <p>No rigid tables—nodes, edges, properties, inferences, evidence, and versions are all first-class ontology objects.</p>
+      </article>
+      <article class="card">
+        <div class="card-icon">🌸</div>
+        <h3>Immutable Facts</h3>
+        <p>Every write is preserved with agent provenance, confidence, timestamp, and evidence. Truth emerges from competing facts.</p>
+      </article>
+      <article class="card">
+        <div class="card-icon">🍃</div>
+        <h3>Native Parallelism</h3>
+        <p>Blocks encode and decode in parallel. The format is designed for SIMD, GPUs, and 100,000-agent workloads.</p>
+      </article>
+      <article class="card">
+        <div class="card-icon">🌼</div>
+        <h3>Embeddings Inside</h3>
+        <p>Each object carries raw, structured, graph, embedding, summary, and keyword representations for different agents.</p>
+      </article>
+      <article class="card">
+        <div class="card-icon">🌺</div>
+        <h3>Semantic Locality</h3>
+        <p>Data is clustered by meaning—"London → England → United Kingdom" lives near each other on disk and in memory.</p>
+      </article>
+      <article class="card">
+        <div class="card-icon">🌻</div>
+        <h3>Integrated Scheduler</h3>
+        <p>Observations wake agents. Agents produce nodes that wake more agents. Dataflow is intrinsic to the substrate.</p>
+      </article>
+    </div>
+  </section>
+
+  <section id="architecture">
+    <h2>From Database to Reasoning Engine</h2>
+    <p class="section-lead">
+      PADAGONIA collapses storage, inference, scheduling, ontology, embeddings, versioning, and compression into one layer.
+    </p>
+    <div class="card-grid">
+      <article class="card">
+        <h3>Parallel Encoding</h3>
+        <p>Split a 2 GB file into 256 chunks—every core decodes immediately with local ontology, checksums, and cross-references.</p>
+      </article>
+      <article class="card">
+        <h3>Relationship Compression</h3>
+        <p>Common ontological motifs like <code>works_for</code> become interned binary primitives, eliminating billions of repeated strings.</p>
+      </article>
+      <article class="card">
+        <h3>GPU-Friendly Layout</h3>
+        <p>Columnar, contiguous blocks turn graph traversals into parallel kernels instead of CPU pointer-chasing.</p>
+      </article>
+    </div>
+  </section>
+
+  <section id="cta">
+    <h2>Grow your agent garden</h2>
+    <p class="section-lead">
+      Start with the open-source engine, upgrade to Padagonia Pro when you need managed hosting, collaboration, and enterprise-grade SLAs.
+    </p>
+    <div class="btn-row">
+      <a class="btn btn-primary" href="pro.html">Explore Padagonia Pro</a>
+      <a class="btn btn-secondary" href="deprecated.html">Browse source archive</a>
+    </div>
+  </section>
+
+  <footer>
+    <p>
+      © Padagonia Project ·
+      <a href="https://github.com/elci-group/padagonia">GitHub</a> ·
+      <a href="releases.html">Releases</a> ·
+      <a href="pro.html">Pro</a>
+    </p>
+  </footer>
+</body>
+</html>

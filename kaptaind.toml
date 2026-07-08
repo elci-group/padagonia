@@ -19,6 +19,24 @@ enabled = true
 branch = "main"
 remote = "origin"
 
+[capabilities]
+network_push = true
+network_webhooks = false
+network_inference = false
+bundle_scoring = false
+external_plugins = false
+
+[angler]
+enabled = true
+
+[angler.git_hooks]
+enabled = true
+
+[angler.git_hooks.pre_commit]
+command = "cargo update -p padagonia && git add Cargo.lock"
+required = true
+timeout_secs = 120
+
 [ratelimit]
 min_commit_interval = 10
 

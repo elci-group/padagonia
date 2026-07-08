@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Source Archive — PADAGONIA</title>
+  <meta name="description" content="Archived and deprecated PADAGONIA source distributions." />
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml" />
+</head>
+<body>
+  <nav>
+    <div class="nav-inner">
+      <a class="brand" href="index.html">
+        <img src="assets/logo.svg" alt="PADAGONIA logo" />
+        PADAGONIA
+      </a>
+      <ul class="nav-links">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="releases.html">Releases</a></li>
+        <li><a href="deprecated.html">Source Archive</a></li>
+        <li><a href="pro.html">Pro</a></li>
+        <li><a class="nav-cta" href="https://github.com/elci-group/padagonia">GitHub</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <section>
+    <h2>Deprecated Source Code</h2>
+    <p class="section-lead">
+      Older PADAGONIA source trees are preserved for reproducibility, but they are no longer maintained. Use the current release for active work.
+    </p>
+
+    <div class="deprecation-banner">
+      <h3>⚠️ Use at your own risk</h3>
+      <p>
+        Deprecated branches and tags may contain known bugs, outdated dependencies, incomplete features, or storage formats that are incompatible with the current codebase. They are provided for historical reference only.
+      </p>
+    </div>
+
+    <div class="card-grid">
+      <article class="card">
+        <h3>v0.1.1 — HNSW integration</h3>
+        <p>Introduced native approximate nearest-neighbour search over node embeddings and the first competitor benchmarks.</p>
+        <p><a class="btn btn-secondary" href="https://github.com/elci-group/padagonia/releases/tag/v0.1.1">Release page</a></p>
+      </article>
+      <article class="card">
+        <h3>v0.1.0 — Core graph store</h3>
+        <p>Initial prototype with ontology interning, immutable nodes/edges, parallel block encoding, and BFS traversal.</p>
+        <p><a class="btn btn-secondary" href="https://github.com/elci-group/padagonia/releases/tag/v0.1.0">Release page</a></p>
+      </article>
+    </div>
+
+    <h3 class="text-center" style="margin-top: 3rem;">Where to find archived sources</h3>
+    <div class="card-grid" style="margin-top: 1.5rem;">
+      <article class="card">
+        <div class="card-icon">🏷️</div>
+        <h3>Git Tags</h3>
+        <p>Every release is tagged in Git. Check out an old tree with <code>git checkout &lt;tag&gt;</code>.</p>
+        <p><a href="https://github.com/elci-group/padagonia/tags">Browse tags on GitHub →</a></p>
+      </article>
+      <article class="card">
+        <div class="card-icon">📦</div>
+        <h3>Source Archives</h3>
+        <p>GitHub automatically packages each tag as a <code>.zip</code> or <code>.tar.gz</code> archive.</p>
+        <p><a href="https://github.com/elci-group/padagonia/releases">Browse releases →</a></p>
+      </article>
+      <article class="card">
+        <div class="card-icon">🌱</div>
+        <h3>Migration Notes</h3>
+        <p>File formats and APIs may differ between versions. Start from the latest release and port data via JSON export/import.</p>
+      </article>
+    </div>
+  </section>
+
+  <footer>
+    <p>
+      © Padagonia Project ·
+      <a href="https://github.com/elci-group/padagonia">GitHub</a> ·
+      <a href="index.html">Home</a>
+    </p>
+  </footer>
+</body>
+</html>

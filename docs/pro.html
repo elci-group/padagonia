@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Padagonia Pro — Managed Agent Memory</title>
+  <meta name="description" content="Padagonia Pro is the managed SaaS offering for PADAGONIA: hosted agent memory, collaboration, and enterprise SLAs." />
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml" />
+</head>
+<body>
+  <nav>
+    <div class="nav-inner">
+      <a class="brand" href="index.html">
+        <img src="assets/logo.svg" alt="PADAGONIA logo" />
+        PADAGONIA
+      </a>
+      <ul class="nav-links">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="releases.html">Releases</a></li>
+        <li><a href="deprecated.html">Source Archive</a></li>
+        <li><a href="pro.html">Pro</a></li>
+        <li><a class="nav-cta" href="https://github.com/elci-group/padagonia">GitHub</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <img src="assets/logo.svg" alt="PADAGONIA logo" width="140" />
+    <h1>Padagonia Pro</h1>
+    <p class="tagline">
+      Managed ontology-native memory for autonomous AI agents. Run, observe, and scale your agent garden without operating the substrate.
+    </p>
+    <div class="btn-row">
+      <a class="btn btn-primary" href="#pricing">See pricing</a>
+      <a class="btn btn-secondary" href="#contact">Request access</a>
+    </div>
+  </header>
+
+  <section>
+    <h2>Built for production agent systems</h2>
+    <p class="section-lead">
+      Padagonia Pro takes the open-source engine and adds managed hosting, multi-agent collaboration, security, and operational tooling.
+    </p>
+    <div class="card-grid">
+      <article class="card">
+        <div class="card-icon">☁️</div>
+        <h3>Fully Managed Clusters</h3>
+        <p>We run the storage, indexing, scheduling, and embedding pipelines so your agents can focus on reasoning.</p>
+      </article>
+      <article class="card">
+        <div class="card-icon">🤝</div>
+        <h3>Multi-Agent Collaboration</h3>
+        <p>Namespaces, agent identity, provenance, and confidence weights let teams of agents share memory safely.</p>
+      </article>
+      <article class="card">
+        <div class="card-icon">🔒</div>
+        <h3>Enterprise Security</h3>
+        <p>SOC 2 readiness, encryption at rest and in transit, SSO/SAML, and fine-grained access controls.</p>
+      </article>
+      <article class="card">
+        <div class="card-icon">📊</div>
+        <h3>Observability</h3>
+        <p>Real-time telemetry on agent reads/writes, graph growth, vector search recall, and ontology drift.</p>
+      </article>
+      <article class="card">
+        <div class="card-icon">🚀</div>
+        <h3>Scale-Out Inference</h3>
+        <p>GPU-backed HNSW and graph kernels with automatic sharding by semantic cluster.</p>
+      </article>
+      <article class="card">
+        <div class="card-icon">🛟</div>
+        <h3>SLA &amp; Support</h3>
+        <p>Email and Slack support, guaranteed uptime, and dedicated success engineering for Enterprise plans.</p>
+      </article>
+    </div>
+  </section>
+
+  <section id="pricing">
+    <h2>Pricing</h2>
+    <p class="section-lead">Start free, upgrade when your agents need more memory, collaborators, or SLA guarantees.</p>
+    <div class="pricing-grid">
+      <article class="price-card">
+        <h3>Seedling</h3>
+        <p class="price">$0<span>/month</span></p>
+        <ul>
+          <li>1 managed namespace</li>
+          <li>10,000 nodes / 50,000 edges</li>
+          <li>Community support</li>
+          <li>Shared infrastructure</li>
+          <li>Standard embeddings</li>
+        </ul>
+        <a class="btn btn-secondary" href="https://github.com/elci-group/padagonia">Start self-hosted</a>
+      </article>
+      <article class="price-card featured">
+        <h3>Bloom 🌸</h3>
+        <p class="price">$149<span>/month</span></p>
+        <ul>
+          <li>5 managed namespaces</li>
+          <li>1M nodes / 5M edges</li>
+          <li>Email support</li>
+          <li>Multi-agent provenance</li>
+          <li>Vector search SLA</li>
+          <li>SSO ready</li>
+        </ul>
+        <a class="btn btn-primary" href="#contact">Request access</a>
+      </article>
+      <article class="price-card">
+        <h3>Enterprise</h3>
+        <p class="price">Custom</p>
+        <ul>
+          <li>Unlimited namespaces</li>
+          <li>Dedicated clusters</li>
+          <li>99.99% SLA</li>
+          <li>Custom contracts &amp; billing</li>
+          <li>Dedicated success engineer</li>
+          <li>On-prem / VPC options</li>
+        </ul>
+        <a class="btn btn-secondary" href="#contact">Contact sales</a>
+      </article>
+    </div>
+  </section>
+
+  <section id="contact">
+    <h2>Request access</h2>
+    <p class="section-lead">
+      Padagonia Pro is opening to early design partners. Tell us about your agent workload and we will be in touch.
+    </p>
+    <form id="contact-form" action="#" method="post">
+      <label for="name">Name</label>
+      <input id="name" name="name" type="text" placeholder="Ada Lovelace" required />
+
+      <label for="email">Work email</label>
+      <input id="email" name="email" type="email" placeholder="ada@example.com" required />
+
+      <label for="plan">Plan of interest</label>
+      <select id="plan" name="plan">
+        <option value="seedling">Seedling (free)</option>
+        <option value="bloom" selected>Bloom</option>
+        <option value="enterprise">Enterprise</option>
+      </select>
+
+      <label for="message">Tell us about your agents</label>
+      <textarea id="message" name="message" rows="4" placeholder="What kind of agents are you building? How many? What memory patterns do you need?"></textarea>
+
+      <button class="btn btn-primary" type="submit" style="border: none; cursor: pointer; width: 100%;">
+        Send request
+      </button>
+      <p id="form-status" class="text-center" style="margin-top: 1rem; color: var(--green-800);"></p>
+    </form>
+  </section>
+
+  <footer>
+    <p>
+      © Padagonia Project ·
+      <a href="https://github.com/elci-group/padagonia">GitHub</a> ·
+      <a href="index.html">Home</a>
+    </p>
+  </footer>
+
+  <script>
+    document.getElementById("contact-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      const status = document.getElementById("form-status");
+      status.textContent = "Thanks — we have received your request and will be in touch shortly.";
+      this.reset();
+    });
+  </script>
+</body>
+</html>
