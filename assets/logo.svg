@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#818cf8"/>
+    </linearGradient>
+    <radialGradient id="node" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#0ea5e9"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+
+  <!-- Hexagonal network -->
+  <g transform="translate(256,256)" fill="none" stroke="url(#ring)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Outer hexagon -->
+    <polygon points="200,0 100,173.2 -100,173.2 -200,0 -100,-173.2 100,-173.2" opacity="0.9"/>
+    <!-- Inner spokes -->
+    <line x1="200" y1="0" x2="0" y2="0"/>
+    <line x1="100" y1="173.2" x2="0" y2="0"/>
+    <line x1="-100" y1="173.2" x2="0" y2="0"/>
+    <line x1="-200" y1="0" x2="0" y2="0"/>
+    <line x1="-100" y1="-173.2" x2="0" y2="0"/>
+    <line x1="100" y1="-173.2" x2="0" y2="0"/>
+    <!-- Cross connections -->
+    <line x1="200" y1="0" x2="-100" y2="173.2"/>
+    <line x1="100" y1="173.2" x2="-100" y2="-173.2"/>
+    <line x1="-100" y1="173.2" x2="100" y2="-173.2"/>
+  </g>
+
+  <!-- Nodes -->
+  <g fill="url(#node)">
+    <circle cx="456" cy="256" r="18"/>
+    <circle cx="356" cy="429.2" r="18"/>
+    <circle cx="156" cy="429.2" r="18"/>
+    <circle cx="56" cy="256" r="18"/>
+    <circle cx="156" cy="82.8" r="18"/>
+    <circle cx="356" cy="82.8" r="18"/>
+    <circle cx="256" cy="256" r="28"/>
+  </g>
+
+  <!-- Letter P -->
+  <text x="256" y="316" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="180" font-weight="800" fill="#f8fafc">P</text>
+
+  <!-- Subtle ring around centre -->
+  <circle cx="256" cy="256" r="72" fill="none" stroke="#38bdf8" stroke-width="3" opacity="0.3"/>
+</svg>

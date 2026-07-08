@@ -10,17 +10,78 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::Instant;
 
-fn usage() {
-    eprintln!(
-        "Usage:
-  padagonia ingest --nodes N --edges E --seed S --out file.pad
-  padagonia load --in file.pad
-  padagonia bfs --in file.pad --start ID --depth D [--relation REL]
-  padagonia to-json --in file.pad --out file.json
-  padagonia vector-search --in file.pad --k K --ef EF [--label LABEL] [--metric euclidean|cosine]
-  padagonia bench [--nodes N --edges E]
-  padagonia bench-vectors [--nodes N --dim D --k K --ef EF --seed S]"
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+// ANSI style helpers for terminal output.
+const BOLD: &str = "\x1b[1m";
+const DIM: &str = "\x1b[2m";
+const CYAN: &str = "\x1b[36m";
+const BLUE: &str = "\x1b[34m";
+const RESET: &str = "\x1b[0m";
+
+fn print_help() {
+    let logo = r#"
+             ╭──────────────╮
+            ╱   ●       ●    ╲
+           │    ╲  P  ╱      │
+           │ ●───●───●───●   │
+           │ │    ╲ ╱    │   │
+           │ ●─────●─────●   │
+            ╲   ╱     ╲   ╱
+             ╰──────────────╯
+"#;
+
+    println!("{}", logo);
+    println!(
+        "{BOLD}{CYAN}PADAGONIA{RESET}{BOLD} — Parallelisation Accessible Database Advance Generative Ontology Networked Information Architecture{RESET}"
     );
+    println!();
+    println!(
+        "{DIM}An ontology-native, immutable, provenance-rich graph store designed for\n\
+         autonomous AI agents: nodes, edges, facts, embeddings, and HNSW vector search.{RESET}"
+    );
+    println!();
+    println!("{BOLD}VERSION{RESET}    {}", VERSION.trim());
+    println!("{BOLD}REPOSITORY{RESET} https://github.com/elci-group/padagonia");
+    println!();
+    println!("{BOLD}USAGE:{RESET}");
+    println!("    {CYAN}padagonia{RESET} {BLUE}<COMMAND>{RESET} [OPTIONS]");
+    println!();
+    println!("{BOLD}COMMANDS:{RESET}");
+
+    let commands: &[(&str, &str)] = &[
+        ("ingest", "Generate a synthetic graph and save it to a PADAGONIA file"),
+        ("load", "Load a PADAGONIA file and print statistics"),
+        ("bfs", "Run a breadth-first search from a starting node"),
+        ("to-json", "Export a PADAGONIA file to JSON"),
+        ("vector-search", "Search node embeddings with the HNSW approximate NN index"),
+        ("bench", "Run graph ingestion / save / load / traversal benchmarks"),
+        ("bench-vectors", "Run vector-search build / search / recall benchmarks"),
+        ("help", "Print this help message"),
+    ];
+
+    for (name, desc) in commands {
+        println!("    {CYAN}{:<16}{RESET} {}", name, desc);
+    }
+
+    println!();
+    println!("{BOLD}GLOBAL OPTIONS:{RESET}");
+    println!("    {BLUE}-h{RESET}, {BLUE}--help{RESET}      Print this help message");
+    println!("    {BLUE}-V{RESET}, {BLUE}--version{RESET}   Print version information");
+    println!();
+    println!("{BOLD}EXAMPLES:{RESET}");
+    println!("    {DIM}# Ingest a synthetic graph{RESET}");
+    println!("    {CYAN}padagonia{RESET} ingest --nodes 10000 --edges 50000 --seed 1 --out graph.pad");
+    println!();
+    println!("    {DIM}# BFS with optional relation filter{RESET}");
+    println!("    {CYAN}padagonia{RESET} bfs --in graph.pad --start 0 --depth 4 --relation works_for");
+    println!();
+    println!("    {DIM}# Approximate nearest-neighbour search over embeddings{RESET}");
+    println!("    {CYAN}padagonia{RESET} vector-search --in graph.pad --k 10 --ef 200 --label Person");
+    println!();
+    println!("    {DIM}# Run the full benchmark suite{RESET}");
+    println!("    {CYAN}padagonia{RESET} bench --nodes 100000 --edges 500000");
+    println!("    {CYAN}padagonia{RESET} bench-vectors --nodes 50000 --dim 128 --k 10 --ef 200");
 }
 
 fn parse_flag<T: std::str::FromStr>(args: &[String], flag: &str) -> Option<T> {
@@ -39,10 +100,21 @@ fn parse_flag_str<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    if args.len() < 2 {
-        usage();
-        std::process::exit(1);
+
+    if args.len() < 2
+        || args[1] == "help"
+        || args[1] == "-h"
+        || args[1] == "--help"
+    {
+        print_help();
+        std::process::exit(0);
     }
+
+    if args[1] == "-V" || args[1] == "--version" {
+        println!("padagonia {}", VERSION.trim());
+        std::process::exit(0);
+    }
+
     let cmd = args[1].as_str();
     let rest = &args[2..];
 
@@ -55,7 +127,8 @@ fn main() {
         "bench" => cmd_bench(rest),
         "bench-vectors" => cmd_bench_vectors(rest),
         _ => {
-            usage();
+            eprintln!("{}error:{} unknown command '{}'\n", BOLD, RESET, cmd);
+            print_help();
             std::process::exit(1);
         }
     }

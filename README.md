@@ -1,7 +1,19 @@
-# PADAGONIA
+<p align="center">
+  <img src="assets/logo.svg" alt="PADAGONIA logo" width="180">
+</p>
 
-A minimal Rust prototype of an ontology-native, immutable, provenance-rich graph store.
-PADAGONIA demonstrates:
+<h1 align="center">PADAGONIA</h1>
+
+<p align="center">
+  <strong>P</strong>arallelisation <strong>A</strong>ccessible <strong>D</strong>atabase <strong>A</strong>dvance <strong>G</strong>enerative <strong>O</strong>ntology <strong>N</strong>etworked <strong>I</strong>nformation <strong>A</strong>rchitecture
+</p>
+
+<p align="center">
+  A minimal Rust prototype of an ontology-native, immutable, provenance-rich graph store
+  designed for autonomous AI agents.
+</p>
+
+## Features
 
 - Interned ontology (labels, relations, property keys) for compact storage.
 - Immutable nodes/edges annotated with agent provenance and confidence.
