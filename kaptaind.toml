@@ -27,15 +27,7 @@ bundle_scoring = false
 external_plugins = false
 
 [angler]
-enabled = true
-
-[angler.git_hooks]
-enabled = true
-
-[angler.git_hooks.pre_commit]
-command = "cargo update -p padagonia && git add Cargo.lock"
-required = true
-timeout_secs = 120
+enabled = false
 
 [ratelimit]
 min_commit_interval = 10
