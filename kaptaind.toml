@@ -15,8 +15,9 @@ d = 0.20
 r = 0.15
 
 [push]
-enabled = false
+enabled = true
 branch = "main"
+remote = "origin"
 
 [ratelimit]
 min_commit_interval = 10
