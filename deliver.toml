@@ -1,0 +1,131 @@
+[[file]]
+path = "Cargo.toml"
+required = true
+require_line_count = 10
+
+[[file]]
+path = "README.md"
+required = true
+require_line_count = 10
+
+[[file]]
+path = "src/lib.rs"
+required = true
+require_line_count = 10
+forbid_regex = ["TODO", "FIXME", "unimplemented!"]
+
+[[file]]
+path = "src/main.rs"
+required = true
+require_line_count = 10
+
+[[file]]
+path = "src/hnsw.rs"
+required = true
+require_line_count = 50
+
+[[file]]
+path = "benches/padagonia_benchmarks.rs"
+required = true
+
+[[file]]
+path = "tests/roundtrip.rs"
+required = true
+
+[[file]]
+path = "tests/parallel_decode.rs"
+required = true
+
+[[file]]
+path = "tests/query_tests.rs"
+required = true
+
+[[file]]
+path = "tests/hnsw.rs"
+required = true
+
+[[file]]
+path = "bench/competitors/generate_workload.py"
+required = true
+
+[[file]]
+path = "bench/competitors/generate_vectors.py"
+required = true
+
+[[file]]
+path = "bench/competitors/benchmark_networkx.py"
+required = true
+
+[[file]]
+path = "bench/competitors/benchmark_sqlite.py"
+required = true
+
+[[file]]
+path = "bench/competitors/benchmark_hnsw.py"
+required = true
+
+[[file]]
+path = "bench/competitors/plot_report.py"
+required = true
+
+[[file]]
+path = "BENCHMARK_REPORT.md"
+required = true
+require_line_count = 5
+
+[[command]]
+name = "cargo test"
+cmd = ["cargo", "test"]
+expect_exit = 0
+timeout_secs = 300
+stdout_contains = ["test result: ok"]
+
+[[command]]
+name = "release bench summary"
+cmd = ["cargo", "run", "--release", "--", "bench", "--nodes", "100000", "--edges", "500000"]
+expect_exit = 0
+timeout_secs = 600
+stdout_contains = ["wrote target/padagonia_bench_summary.json"]
+
+[[command]]
+name = "generate vector workload"
+cmd = ["bash", "-lc", "source .venv/bin/activate && python3 bench/competitors/generate_vectors.py 50000 128 123 bench/competitors"]
+expect_exit = 0
+timeout_secs = 60
+
+[[command]]
+name = "vector-search cli sanity"
+cmd = ["cargo", "run", "--release", "--", "vector-search", "--in", "target/padagonia_bench.pad", "--k", "5", "--ef", "50"]
+expect_exit = 0
+timeout_secs = 300
+
+[[command]]
+name = "hnsw vector benchmark"
+cmd = ["cargo", "run", "--release", "--", "bench-vectors", "--nodes", "50000", "--dim", "128", "--k", "10", "--ef", "200", "--m", "24", "--queries", "50"]
+expect_exit = 0
+timeout_secs = 300
+stdout_contains = ["wrote target/padagonia_hnsw_summary.json"]
+
+[[command]]
+name = "networkx competitor benchmark"
+cmd = ["bash", "-lc", "source .venv/bin/activate && python3 bench/competitors/benchmark_networkx.py bench/competitors"]
+expect_exit = 0
+timeout_secs = 300
+
+[[command]]
+name = "sqlite competitor benchmark"
+cmd = ["bash", "-lc", "source .venv/bin/activate && python3 bench/competitors/benchmark_sqlite.py bench/competitors"]
+expect_exit = 0
+timeout_secs = 300
+
+[[command]]
+name = "hnsw competitor benchmark"
+cmd = ["bash", "-lc", "source .venv/bin/activate && python3 bench/competitors/benchmark_hnsw.py bench/competitors"]
+expect_exit = 0
+timeout_secs = 300
+
+[[command]]
+name = "generate benchmark report"
+cmd = ["bash", "-lc", "source .venv/bin/activate && python3 bench/competitors/plot_report.py"]
+expect_exit = 0
+timeout_secs = 60

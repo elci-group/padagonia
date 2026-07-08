@@ -1,0 +1,7 @@
+/target/
+/.venv/
+/.kaptaind/
+*.pad
+*.csv
+!/bench/competitors/*.py
+bench/competitors/results.json
