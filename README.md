@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  🌸 <a href="https://elci-group.github.io/padagonia/">Visit the PADAGONIA website</a> 🌸
+  🌸 <a href="docs/index.html">Browse the PADAGONIA website source</a> 🌸
 </p>
 
 ## Features
