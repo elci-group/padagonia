@@ -19,6 +19,9 @@ enabled = true
 branch = "main"
 remote = "origin"
 
+[push.safety]
+protect_branches = []
+
 [capabilities]
 network_push = true
 network_webhooks = false
