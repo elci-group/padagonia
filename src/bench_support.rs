@@ -12,7 +12,7 @@ impl Rng {
         Self { state: seed }
     }
 
-    pub fn next(&mut self) -> u64 {
+    pub fn next_u64(&mut self) -> u64 {
         self.state = self.state.wrapping_add(0x9e3779b97f4a7c15);
         let mut z = self.state;
         z = (z ^ (z >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
@@ -21,14 +21,14 @@ impl Rng {
     }
 
     pub fn next_f32(&mut self) -> f32 {
-        ((self.next() >> 32) as u32) as f32 / u32::MAX as f32
+        ((self.next_u64() >> 32) as u32) as f32 / u32::MAX as f32
     }
 
     pub fn next_usize(&mut self, max: usize) -> usize {
         if max == 0 {
             0
         } else {
-            (self.next() as usize) % max
+            (self.next_u64() as usize) % max
         }
     }
 }
@@ -52,12 +52,16 @@ pub fn generate_powerlaw(store: &mut Store, nodes: usize, edges: usize, seed: u6
     for i in 0..nodes {
         let label = NODE_LABELS[rng.next_usize(NODE_LABELS.len())];
         let name = format!("node_{}", i);
-        let score = rng.next() as i64 % 1000;
-        let age = Scalar::I64((rng.next() % 80 + 18) as i64);
+        let score = rng.next_u64() as i64 % 1000;
+        let age = Scalar::I64((rng.next_u64() % 80 + 18) as i64);
         let embedding: Vec<f32> = (0..16).map(|_| rng.next_f32()).collect();
         let id = store.add_node(
             label,
-            vec![("name", Scalar::String(name)), ("score", Scalar::I64(score)), ("age", age)],
+            vec![
+                ("name", Scalar::String(name)),
+                ("score", Scalar::I64(score)),
+                ("age", age),
+            ],
             Some(embedding),
             provenance.clone(),
         );
@@ -76,7 +80,7 @@ pub fn generate_powerlaw(store: &mut Store, nodes: usize, edges: usize, seed: u6
             }
         };
         let rel = RELATIONS[rng.next_usize(RELATIONS.len())];
-        let since = rng.next() % 30 + 1990;
+        let since = rng.next_u64() % 30 + 1990;
         let confidence = 0.5 + rng.next_f32() * 0.5;
         let mut edge_prov = provenance.clone();
         edge_prov.confidence = confidence;
@@ -98,8 +102,7 @@ fn powerlaw_index(rng: &mut Rng, n: usize, alpha: f64) -> usize {
     }
     let u = rng.next_f32() as f64;
     let x = (1.0 - u).powf(-1.0 / (alpha - 1.0));
-    let idx = (x as usize) % n;
-    idx
+    (x as usize) % n
 }
 
 /// Generate a small deterministic graph for tests.

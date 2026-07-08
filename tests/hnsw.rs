@@ -57,10 +57,7 @@ fn exact_when_k_equals_n() {
     let results = index.search(&query, 50, 50);
     assert_eq!(results.len(), 50);
 
-    let returned: HashSet<NodeId> = results
-        .into_iter()
-        .map(|(pid, _)| NodeId(pid.0))
-        .collect();
+    let returned: HashSet<NodeId> = results.into_iter().map(|(pid, _)| NodeId(pid.0)).collect();
     let all: HashSet<NodeId> = store.nodes.keys().copied().collect();
     assert_eq!(returned, all);
 }

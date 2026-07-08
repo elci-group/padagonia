@@ -1,6 +1,6 @@
 use crate::edge::Edge;
 use crate::fact::FactSubject;
-use crate::hnsw::Distance;
+use crate::hnsw::{Distance, DEFAULT_EF_CONSTRUCTION, DEFAULT_M};
 use crate::id::{LabelId, NodeId, RelationId};
 use crate::node::Node;
 use crate::provenance::Provenance;
@@ -17,13 +17,13 @@ impl Eq for Score {}
 
 impl PartialOrd for Score {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.0.partial_cmp(&other.0)
+        Some(self.cmp(other))
     }
 }
 
 impl Ord for Score {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.partial_cmp(other).unwrap_or(Ordering::Equal)
+        self.0.partial_cmp(&other.0).unwrap_or(Ordering::Equal)
     }
 }
 
@@ -43,7 +43,7 @@ impl<'a> QueryEngine<'a> {
             .map(|ids| {
                 ids.iter()
                     .filter_map(|&id| self.store.edges.get(&id))
-                    .filter(|e| relation.map_or(true, |r| e.label == r))
+                    .filter(|e| relation.is_none_or(|r| e.label == r))
                     .collect()
             })
             .unwrap_or_default()
@@ -56,7 +56,7 @@ impl<'a> QueryEngine<'a> {
             .map(|ids| {
                 ids.iter()
                     .filter_map(|&id| self.store.edges.get(&id))
-                    .filter(|e| relation.map_or(true, |r| e.label == r))
+                    .filter(|e| relation.is_none_or(|r| e.label == r))
                     .collect()
             })
             .unwrap_or_default()
@@ -65,14 +65,16 @@ impl<'a> QueryEngine<'a> {
     pub fn neighbors(&self, node: NodeId) -> Vec<NodeId> {
         let mut nbrs = Vec::new();
         if let Some(ids) = self.store.outgoing.get(&node) {
-            nbrs.extend(ids.iter().filter_map(|&id| {
-                self.store.edges.get(&id).map(|e| e.dst)
-            }));
+            nbrs.extend(
+                ids.iter()
+                    .filter_map(|&id| self.store.edges.get(&id).map(|e| e.dst)),
+            );
         }
         if let Some(ids) = self.store.incoming.get(&node) {
-            nbrs.extend(ids.iter().filter_map(|&id| {
-                self.store.edges.get(&id).map(|e| e.src)
-            }));
+            nbrs.extend(
+                ids.iter()
+                    .filter_map(|&id| self.store.edges.get(&id).map(|e| e.src)),
+            );
         }
         nbrs.sort_by_key(|n| n.0);
         nbrs.dedup();
@@ -147,14 +149,11 @@ impl<'a> QueryEngine<'a> {
     }
 
     pub fn highest_confidence_fact(&self, subject: FactSubject) -> Option<&'a Provenance> {
-        self.store
-            .facts
-            .get(&subject)
-            .and_then(|facts| {
-                facts
-                    .iter()
-                    .max_by(|a, b| a.confidence.partial_cmp(&b.confidence).unwrap())
-            })
+        self.store.facts.get(&subject).and_then(|facts| {
+            facts
+                .iter()
+                .max_by(|a, b| a.confidence.partial_cmp(&b.confidence).unwrap())
+        })
     }
 
     /// Approximate vector search over node embeddings.
@@ -165,9 +164,12 @@ impl<'a> QueryEngine<'a> {
         label_filter: Option<LabelId>,
         ef: usize,
     ) -> Vec<(NodeId, f32)> {
-        let index = self
-            .store
-            .build_hnsw_index(Distance::Euclidean, 16, 200, ef.max(k));
+        let index = self.store.build_hnsw_index(
+            Distance::Euclidean,
+            DEFAULT_M,
+            DEFAULT_EF_CONSTRUCTION,
+            ef.max(k),
+        );
         let mut ef_cur = ef.max(k);
         loop {
             let results = index.search(query, k, ef_cur);
@@ -176,7 +178,7 @@ impl<'a> QueryEngine<'a> {
                 .filter_map(|(pid, dist)| {
                     let nid = NodeId(pid.0);
                     self.store.nodes.get(&nid).and_then(|n| {
-                        if label_filter.map_or(true, |l| n.label == l) {
+                        if label_filter.is_none_or(|l| n.label == l) {
                             Some((nid, dist))
                         } else {
                             None
@@ -202,7 +204,7 @@ impl<'a> QueryEngine<'a> {
         let mut heap = BinaryHeap::<(Score, NodeId)>::new();
         for node in self.store.nodes.values() {
             if let Some(emb) = &node.embedding {
-                if label_filter.map_or(true, |l| node.label == l) {
+                if label_filter.is_none_or(|l| node.label == l) {
                     let d = Score(euclidean_distance(query, emb));
                     heap.push((d, node.id));
                     if heap.len() > k {
@@ -211,10 +213,7 @@ impl<'a> QueryEngine<'a> {
                 }
             }
         }
-        let mut results: Vec<_> = heap
-            .into_iter()
-            .map(|(Score(d), id)| (id, d))
-            .collect();
+        let mut results: Vec<_> = heap.into_iter().map(|(Score(d), id)| (id, d)).collect();
         results.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
         results
     }

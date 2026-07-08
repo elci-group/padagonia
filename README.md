@@ -33,6 +33,11 @@
 cargo test
 ```
 
+> **Kaptaind fallback:** The repo is configured for `kaptaind` auto-versioning
+> and push. If the daemon is unavailable or its analysis decides not to bump,
+> fall back to manual `git commit` / `git push` and keep `Cargo.toml` and
+> `Cargo.lock` in sync with the `VERSION` file.
+
 ## CLI
 
 ```bash

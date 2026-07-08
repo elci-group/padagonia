@@ -1,5 +1,4 @@
 pub mod bench_support;
-pub mod block;
 pub mod edge;
 pub mod fact;
 pub mod hnsw;
@@ -12,6 +11,9 @@ pub mod query;
 pub mod store;
 pub mod value;
 
+pub mod cli;
+pub mod storage;
+
 pub use edge::Edge;
 pub use fact::FactSubject;
 pub use hnsw::{Distance, HnswIndex, PointId};
@@ -21,5 +23,6 @@ pub use ontology::{StringTable, StringTableExt};
 pub use projection::Projection;
 pub use provenance::Provenance;
 pub use query::QueryEngine;
-pub use store::{Store, StoreError};
+pub use storage::{Block, BlockKind, BlockPayload, FileHeader, StoreError};
+pub use store::Store;
 pub use value::Scalar;

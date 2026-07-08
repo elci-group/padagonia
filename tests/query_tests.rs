@@ -8,14 +8,55 @@ use padagonia::store::Store;
 #[test]
 fn bfs_distances_are_correct() {
     let mut store = Store::new();
-    let a = store.add_node("A", vec![], None, Provenance::new("a", "m", 1.0, 0.0, 1, vec![]));
-    let b = store.add_node("B", vec![], None, Provenance::new("a", "m", 1.0, 0.0, 1, vec![]));
-    let c = store.add_node("C", vec![], None, Provenance::new("a", "m", 1.0, 0.0, 1, vec![]));
-    let d = store.add_node("D", vec![], None, Provenance::new("a", "m", 1.0, 0.0, 1, vec![]));
+    let a = store.add_node(
+        "A",
+        vec![],
+        None,
+        Provenance::new("a", "m", 1.0, 0.0, 1, vec![]),
+    );
+    let b = store.add_node(
+        "B",
+        vec![],
+        None,
+        Provenance::new("a", "m", 1.0, 0.0, 1, vec![]),
+    );
+    let c = store.add_node(
+        "C",
+        vec![],
+        None,
+        Provenance::new("a", "m", 1.0, 0.0, 1, vec![]),
+    );
+    let d = store.add_node(
+        "D",
+        vec![],
+        None,
+        Provenance::new("a", "m", 1.0, 0.0, 1, vec![]),
+    );
 
-    store.add_edge(a, b, "r", vec![], None, Provenance::new("a", "m", 1.0, 0.0, 1, vec![]));
-    store.add_edge(b, c, "r", vec![], None, Provenance::new("a", "m", 1.0, 0.0, 1, vec![]));
-    store.add_edge(a, d, "r", vec![], None, Provenance::new("a", "m", 1.0, 0.0, 1, vec![]));
+    store.add_edge(
+        a,
+        b,
+        "r",
+        vec![],
+        None,
+        Provenance::new("a", "m", 1.0, 0.0, 1, vec![]),
+    );
+    store.add_edge(
+        b,
+        c,
+        "r",
+        vec![],
+        None,
+        Provenance::new("a", "m", 1.0, 0.0, 1, vec![]),
+    );
+    store.add_edge(
+        a,
+        d,
+        "r",
+        vec![],
+        None,
+        Provenance::new("a", "m", 1.0, 0.0, 1, vec![]),
+    );
 
     let engine = QueryEngine::new(&store);
     let reached: std::collections::HashMap<_, _> =
@@ -30,12 +71,41 @@ fn bfs_distances_are_correct() {
 #[test]
 fn relation_filter_limits_edges() {
     let mut store = Store::new();
-    let a = store.add_node("A", vec![], None, Provenance::new("a", "m", 1.0, 0.0, 1, vec![]));
-    let b = store.add_node("B", vec![], None, Provenance::new("a", "m", 1.0, 0.0, 1, vec![]));
-    let c = store.add_node("C", vec![], None, Provenance::new("a", "m", 1.0, 0.0, 1, vec![]));
+    let a = store.add_node(
+        "A",
+        vec![],
+        None,
+        Provenance::new("a", "m", 1.0, 0.0, 1, vec![]),
+    );
+    let b = store.add_node(
+        "B",
+        vec![],
+        None,
+        Provenance::new("a", "m", 1.0, 0.0, 1, vec![]),
+    );
+    let c = store.add_node(
+        "C",
+        vec![],
+        None,
+        Provenance::new("a", "m", 1.0, 0.0, 1, vec![]),
+    );
 
-    store.add_edge(a, b, "knows", vec![], None, Provenance::new("a", "m", 1.0, 0.0, 1, vec![]));
-    store.add_edge(a, c, "works_for", vec![], None, Provenance::new("a", "m", 1.0, 0.0, 1, vec![]));
+    store.add_edge(
+        a,
+        b,
+        "knows",
+        vec![],
+        None,
+        Provenance::new("a", "m", 1.0, 0.0, 1, vec![]),
+    );
+    store.add_edge(
+        a,
+        c,
+        "works_for",
+        vec![],
+        None,
+        Provenance::new("a", "m", 1.0, 0.0, 1, vec![]),
+    );
 
     let engine = QueryEngine::new(&store);
     let knows_id = store.string_table.relation_id("knows").unwrap();
@@ -47,12 +117,41 @@ fn relation_filter_limits_edges() {
 #[test]
 fn confidence_filter_skips_weak_edges() {
     let mut store = Store::new();
-    let a = store.add_node("A", vec![], None, Provenance::new("a", "m", 1.0, 0.0, 1, vec![]));
-    let b = store.add_node("B", vec![], None, Provenance::new("a", "m", 1.0, 0.0, 1, vec![]));
-    let c = store.add_node("C", vec![], None, Provenance::new("a", "m", 1.0, 0.0, 1, vec![]));
+    let a = store.add_node(
+        "A",
+        vec![],
+        None,
+        Provenance::new("a", "m", 1.0, 0.0, 1, vec![]),
+    );
+    let b = store.add_node(
+        "B",
+        vec![],
+        None,
+        Provenance::new("a", "m", 1.0, 0.0, 1, vec![]),
+    );
+    let c = store.add_node(
+        "C",
+        vec![],
+        None,
+        Provenance::new("a", "m", 1.0, 0.0, 1, vec![]),
+    );
 
-    store.add_edge(a, b, "r", vec![], None, Provenance::new("a", "m", 0.9, 0.0, 1, vec![]));
-    store.add_edge(a, c, "r", vec![], None, Provenance::new("a", "m", 0.3, 0.0, 1, vec![]));
+    store.add_edge(
+        a,
+        b,
+        "r",
+        vec![],
+        None,
+        Provenance::new("a", "m", 0.9, 0.0, 1, vec![]),
+    );
+    store.add_edge(
+        a,
+        c,
+        "r",
+        vec![],
+        None,
+        Provenance::new("a", "m", 0.3, 0.0, 1, vec![]),
+    );
 
     let engine = QueryEngine::new(&store);
     let reached = engine.bfs(a, 10, None, Some(0.5));
@@ -79,9 +178,20 @@ fn by_label_counts_match() {
 fn facts_count_after_additions() {
     let mut store = Store::new();
     // Initial provenance has lower confidence so the added facts are the winners.
-    let a = store.add_node("A", vec![], None, Provenance::new("a", "m", 0.5, 0.0, 1, vec![]));
-    store.add_fact(FactSubject::Node(a), Provenance::new("a", "m", 0.9, 0.0, 2, vec![]));
-    store.add_fact(FactSubject::Node(a), Provenance::new("a", "m", 0.7, 0.0, 3, vec![]));
+    let a = store.add_node(
+        "A",
+        vec![],
+        None,
+        Provenance::new("a", "m", 0.5, 0.0, 1, vec![]),
+    );
+    store.add_fact(
+        FactSubject::Node(a),
+        Provenance::new("a", "m", 0.9, 0.0, 2, vec![]),
+    );
+    store.add_fact(
+        FactSubject::Node(a),
+        Provenance::new("a", "m", 0.7, 0.0, 3, vec![]),
+    );
 
     let engine = QueryEngine::new(&store);
     // add_node records the initial provenance as a fact, plus the two add_fact calls.

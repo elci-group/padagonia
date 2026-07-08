@@ -21,10 +21,20 @@ fn scalar_to_json(scalar: &crate::value::Scalar) -> Value {
         Scalar::Null => Value::Null,
         Scalar::Bool(b) => Value::Bool(*b),
         Scalar::I64(i) => Value::Number((*i).into()),
-        Scalar::F64(f) => Value::Number(serde_json::Number::from_f64(*f).unwrap_or_else(|| 0.into())),
+        Scalar::F64(f) => {
+            Value::Number(serde_json::Number::from_f64(*f).unwrap_or_else(|| 0.into()))
+        }
         Scalar::String(s) => Value::String(s.clone()),
         Scalar::Bytes(b) => Value::Array(b.iter().map(|x| Value::Number((*x).into())).collect()),
-        Scalar::Embedding(v) => Value::Array(v.iter().map(|x| Value::Number(serde_json::Number::from_f64(*x as f64).unwrap_or_else(|| 0.into()))).collect()),
+        Scalar::Embedding(v) => Value::Array(
+            v.iter()
+                .map(|x| {
+                    Value::Number(
+                        serde_json::Number::from_f64(*x as f64).unwrap_or_else(|| 0.into()),
+                    )
+                })
+                .collect(),
+        ),
         Scalar::Timestamp(t) => Value::Number((*t).into()),
     }
 }
@@ -32,7 +42,11 @@ fn scalar_to_json(scalar: &crate::value::Scalar) -> Value {
 fn props_to_json(props: &[(crate::id::KeyId, crate::value::Scalar)], store: &Store) -> Value {
     let mut map = Map::new();
     for (k, v) in props {
-        let key = store.string_table.resolve_key(*k).unwrap_or("?").to_string();
+        let key = store
+            .string_table
+            .resolve_key(*k)
+            .unwrap_or("?")
+            .to_string();
         map.insert(key, scalar_to_json(v));
     }
     Value::Object(map)
@@ -128,7 +142,10 @@ impl Projection for Store {
                         .to_string(),
                 ),
             );
-            obj.insert("properties".to_string(), props_to_json(&node.properties, self));
+            obj.insert(
+                "properties".to_string(),
+                props_to_json(&node.properties, self),
+            );
             writeln!(writer, "{}", Value::Object(obj))?;
         }
         for edge in self.edges.values() {
@@ -146,7 +163,10 @@ impl Projection for Store {
                         .to_string(),
                 ),
             );
-            obj.insert("properties".to_string(), props_to_json(&edge.properties, self));
+            obj.insert(
+                "properties".to_string(),
+                props_to_json(&edge.properties, self),
+            );
             writeln!(writer, "{}", Value::Object(obj))?;
         }
         writer.flush()
@@ -158,9 +178,15 @@ impl Projection for Store {
         writeln!(writer, "id,label,properties")?;
         for node in self.nodes.values() {
             let label = self.string_table.resolve_label(node.label).unwrap_or("?");
-            let props = serde_json::to_string(&props_to_json(&node.properties, self))
-                .unwrap_or_default();
-            writeln!(writer, "{},{},\"{}\"", node.id.0, label, props.replace('"', "\"\""))?;
+            let props =
+                serde_json::to_string(&props_to_json(&node.properties, self)).unwrap_or_default();
+            writeln!(
+                writer,
+                "{},{},\"{}\"",
+                node.id.0,
+                label,
+                props.replace('"', "\"\"")
+            )?;
         }
         writer.flush()
     }
@@ -170,9 +196,12 @@ impl Projection for Store {
         let mut writer = BufWriter::new(file);
         writeln!(writer, "id,src,dst,label,properties")?;
         for edge in self.edges.values() {
-            let label = self.string_table.resolve_relation(edge.label).unwrap_or("?");
-            let props = serde_json::to_string(&props_to_json(&edge.properties, self))
-                .unwrap_or_default();
+            let label = self
+                .string_table
+                .resolve_relation(edge.label)
+                .unwrap_or("?");
+            let props =
+                serde_json::to_string(&props_to_json(&edge.properties, self)).unwrap_or_default();
             writeln!(
                 writer,
                 "{},{},{},{},\"{}\"",

@@ -27,6 +27,10 @@ bundle_scoring = false
 external_plugins = false
 
 [angler]
+# Angler git-hooks integration is currently broken; keep the subsystem disabled.
+enabled = false
+
+[angler.git_hooks]
 enabled = false
 
 [ratelimit]

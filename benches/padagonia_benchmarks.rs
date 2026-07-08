@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use padagonia::bench_support::{generate_powerlaw, generate_vectors, Rng};
-use padagonia::hnsw::Distance;
+use padagonia::hnsw::{Distance, DEFAULT_EF_CONSTRUCTION, DEFAULT_M};
 use padagonia::ontology::StringTableExt;
 use padagonia::query::QueryEngine;
 use padagonia::store::Store;
@@ -17,13 +17,17 @@ fn bench_ingest(c: &mut Criterion) {
     let mut group = c.benchmark_group("ingest");
     for (nodes, edges) in [(10_000usize, 50_000usize), (100_000, 500_000)] {
         group.throughput(Throughput::Elements((nodes + edges) as u64));
-        group.bench_with_input(format!("{}_{}", nodes, edges), &(nodes, edges), |b, &(n, e)| {
-            b.iter(|| {
-                let mut store = Store::new();
-                generate_powerlaw(&mut store, n, e, 99);
-                black_box(store);
-            });
-        });
+        group.bench_with_input(
+            format!("{}_{}", nodes, edges),
+            &(nodes, edges),
+            |b, &(n, e)| {
+                b.iter(|| {
+                    let mut store = Store::new();
+                    generate_powerlaw(&mut store, n, e, 99);
+                    black_box(store);
+                });
+            },
+        );
     }
     group.finish();
 }
@@ -33,7 +37,9 @@ fn bench_save(c: &mut Criterion) {
     generate_powerlaw(&mut store, 100_000, 500_000, 99);
     let tmp = make_tmp();
     let mut group = c.benchmark_group("save");
-    group.throughput(Throughput::Elements((store.nodes.len() + store.edges.len()) as u64));
+    group.throughput(Throughput::Elements(
+        (store.nodes.len() + store.edges.len()) as u64,
+    ));
     group.bench_function("100k_500k", |b| {
         b.iter(|| {
             store.save(&tmp).unwrap();
@@ -70,7 +76,12 @@ fn bench_bfs(c: &mut Criterion) {
     let mut store = Store::new();
     generate_powerlaw(&mut store, 100_000, 500_000, 99);
     let engine = QueryEngine::new(&store);
-    let start = store.outgoing.keys().next().copied().unwrap_or(padagonia::NodeId(0));
+    let start = store
+        .outgoing
+        .keys()
+        .next()
+        .copied()
+        .unwrap_or(padagonia::NodeId(0));
 
     let mut group = c.benchmark_group("bfs");
     group.bench_function("depth4_100k_500k", |b| {
@@ -103,16 +114,17 @@ fn bench_hnsw(c: &mut Criterion) {
     const DIM: usize = 128;
     const K: usize = 10;
     const EF: usize = 200;
-    const M: usize = 24;
-    const EF_CONSTRUCTION: usize = 200;
+    const M: usize = DEFAULT_M;
+    const EF_CONSTRUCTION: usize = DEFAULT_EF_CONSTRUCTION;
 
     let mut store = Store::new();
     generate_vectors(&mut store, N, DIM, 123);
     let engine = QueryEngine::new(&store);
 
     let mut rng = Rng::new(7);
-    let queries: Vec<Vec<f32>> =
-        (0..100).map(|_| (0..DIM).map(|_| rng.next_f32()).collect()).collect();
+    let queries: Vec<Vec<f32>> = (0..100)
+        .map(|_| (0..DIM).map(|_| rng.next_f32()).collect())
+        .collect();
 
     // --- build benchmark ---
     let mut build_group = c.benchmark_group("hnsw_build");
@@ -158,8 +170,14 @@ fn bench_hnsw(c: &mut Criterion) {
     let mut recall_sum = 0.0;
     for (i, q) in queries.iter().enumerate() {
         let hnsw = index.search(q, K, EF);
-        let h_ids: HashSet<padagonia::NodeId> = hnsw.iter().map(|(pid, _)| padagonia::NodeId(pid.0)).collect();
-        let hits = brute_results[i].iter().filter(|id| h_ids.contains(id)).count();
+        let h_ids: HashSet<padagonia::NodeId> = hnsw
+            .iter()
+            .map(|(pid, _)| padagonia::NodeId(pid.0))
+            .collect();
+        let hits = brute_results[i]
+            .iter()
+            .filter(|id| h_ids.contains(id))
+            .count();
         recall_sum += hits as f64 / K as f64;
     }
     let recall = recall_sum / queries.len() as f64;

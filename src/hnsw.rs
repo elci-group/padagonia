@@ -17,6 +17,21 @@ pub enum Distance {
 /// Reuse the graph `NodeId` to identify a point in the vector index.
 pub type PointId = NodeId;
 
+/// Tuned default construction parameters.
+///
+/// These values balance build speed and recall on the benchmark workload
+/// (10 000 vectors × 128 dims, k = 10) while keeping recall@k ≥ 0.85.
+pub const DEFAULT_M: usize = 16;
+pub const DEFAULT_EF_CONSTRUCTION: usize = 64;
+
+/// Default layer-0 link multiplier.
+///
+/// The fast-hnsw crate derives each node's level from `M` as
+/// `m_l = 1 / ln(M)` and uses `2 * M` links at layer 0 by default.
+/// Pinning the multiplier explicitly makes the bottom-layer connectivity
+/// part of the level-generation tuning strategy.
+const DEFAULT_M0_MULTIPLIER: usize = 2;
+
 enum InnerMetric {
     SquaredEuclidean,
     Cosine,
@@ -35,12 +50,14 @@ impl FastDistance for InnerMetric {
     #[inline]
     fn distance(&self, a: &[f32], b: &[f32]) -> f32 {
         match self {
-            InnerMetric::SquaredEuclidean => {
-                a.iter().zip(b.iter()).map(|(x, y)| {
+            InnerMetric::SquaredEuclidean => a
+                .iter()
+                .zip(b.iter())
+                .map(|(x, y)| {
                     let d = x - y;
                     d * d
-                }).sum()
-            }
+                })
+                .sum(),
             InnerMetric::Cosine => cosine_distance(a, b),
         }
     }
@@ -78,6 +95,7 @@ impl HnswIndex {
         let inner = Builder::new()
             .m(m)
             .ef_construction(ef_construction)
+            .m0(m * DEFAULT_M0_MULTIPLIER)
             .seed(seed)
             .build(metric);
         Self {
