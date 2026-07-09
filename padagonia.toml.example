@@ -1,0 +1,22 @@
+# Example PADAGONIA configuration file.
+# Copy this file to `padagonia.toml` and adjust values as needed.
+# Settings can also be overridden via environment variables using the
+# prefix `PADAGONIA__` and double underscores for nested keys, e.g.:
+#   PADAGONIA__SERVER__LISTEN_ADDR=127.0.0.1:8080
+
+[server]
+listen_addr = "127.0.0.1:8080"
+api_key = "padagonia-secret"
+data_dir = "data/store.pad"
+
+[storage]
+data_dir = "data"
+default_graph = "graph.pad"
+
+[logging]
+level = "info"
+
+[hnsw]
+m = 16
+ef_construction = 200
+ef = 50

@@ -71,6 +71,7 @@ fn print_help() {
             "bench-vectors",
             "Run vector-search build / search / recall benchmarks",
         ),
+        ("server", "Start the PADAGONIA HTTP server"),
         ("help", "Print this help message"),
     ];
 
@@ -98,6 +99,9 @@ fn print_help() {
     println!(
         "    {CYAN}padagonia{RESET} vector-search --in graph.pad --k 10 --ef 200 --label Person"
     );
+    println!();
+    println!("    {DIM}# Start the HTTP server{RESET}");
+    println!("    {CYAN}padagonia{RESET} server --config padagonia.toml");
     println!();
     println!("    {DIM}# Run the full benchmark suite{RESET}");
     println!("    {CYAN}padagonia{RESET} bench --nodes 100000 --edges 500000");
@@ -134,6 +138,8 @@ pub fn run() {
     let cmd = args[1].as_str();
     let rest = &args[2..];
 
+    metrics::counter!("padagonia_cli_commands_total", "command" => cmd.to_string()).increment(1);
+
     match cmd {
         "ingest" => cmd_ingest(rest),
         "load" => cmd_load(rest),
@@ -142,6 +148,7 @@ pub fn run() {
         "vector-search" => cmd_vector_search(rest),
         "bench" => cmd_bench(rest),
         "bench-vectors" => cmd_bench_vectors(rest),
+        "server" => cmd_server(rest),
         _ => {
             eprintln!("{}error:{} unknown command '{}'\n", BOLD, RESET, cmd);
             print_help();
@@ -446,4 +453,14 @@ fn cmd_bench_vectors(args: &[String]) {
     fs::write(&out, serde_json::to_string_pretty(&summary).unwrap()).unwrap();
     println!("{}", serde_json::to_string_pretty(&summary).unwrap());
     println!("wrote {}", out.display());
+}
+
+fn cmd_server(args: &[String]) {
+    let config_path: &str = parse_flag_str(args, "--config").unwrap_or("padagonia.toml");
+    let settings =
+        crate::app_config::Settings::load_from(config_path).expect("failed to load configuration");
+
+    let rt = tokio::runtime::Runtime::new().expect("failed to create Tokio runtime");
+    rt.block_on(crate::server::serve(settings))
+        .expect("server failed");
 }

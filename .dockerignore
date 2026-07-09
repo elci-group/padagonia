@@ -1,0 +1,34 @@
+# Rust build artifacts
+/target
+
+# Version control
+/.git
+/.gitignore
+
+# CI/CD configuration
+/.github
+
+# Editor / IDE files
+/.idea
+/.vscode
+*.swp
+*.swo
+*.swn
+.DS_Store
+
+# Local Python environment & competitor harness
+/.venv
+/bench
+
+# Documentation website assets (not needed for the build)
+/docs
+
+# Docker files themselves
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Local runtime data / config overrides
+/data
+*.pad
+padagonia.toml

@@ -62,6 +62,9 @@ cargo run --release -- bench-vectors --nodes 100000 --dim 128 --k 10 --ef 50
 
 # Query nearest neighbours from a PADAGONIA file
 cargo run --release -- vector-search --in /tmp/test.pad --k 10 --ef 50
+
+# Start the HTTP server (see padagonia.toml.example for configuration)
+cargo run -- server --config padagonia.toml.example
 ```
 
 ## Benchmarks
@@ -111,9 +114,24 @@ src/
 - Each block stores its `BlockKind`, bincode-encoded payload, and a CRC32 checksum.
 - Save encodes blocks in parallel with `rayon`; load validates checksums and decodes blocks in parallel.
 
+## Contributing
+
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for
+guidelines, and read our [Code of Conduct](CODE_OF_CONDUCT.md) before
+participating.
+
+To report security issues privately, see [SECURITY.md](SECURITY.md).
+
 ## License
 
-Prototype / educational.
+PADAGONIA is licensed under either of the following, at your option:
+
+- [Apache License, Version 2.0](LICENSE-APACHE)
+- [MIT License](LICENSE-MIT)
+
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in PADAGONIA by you, as defined in the Apache-2.0 license, is
+licensed as above without any additional terms or conditions.
 
 
 

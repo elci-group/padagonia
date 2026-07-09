@@ -11,7 +11,9 @@ pub mod query;
 pub mod store;
 pub mod value;
 
+pub mod app_config;
 pub mod cli;
+pub mod server;
 pub mod storage;
 
 pub use edge::Edge;

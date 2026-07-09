@@ -1,0 +1,20 @@
+# PADAGONIA configuration tuned for the official Docker image.
+# The listen address is bound to all interfaces so the container port can be
+# exposed to the host and to orchestrators.
+
+[server]
+listen_addr = "0.0.0.0:7373"
+api_key = "padagonia-secret"
+data_dir = "/var/lib/padagonia/data/store.pad"
+
+[storage]
+data_dir = "/var/lib/padagonia/data"
+default_graph = "graph.pad"
+
+[logging]
+level = "info"
+
+[hnsw]
+m = 16
+ef_construction = 200
+ef = 50

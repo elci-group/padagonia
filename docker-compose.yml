@@ -1,0 +1,28 @@
+services:
+  padagonia:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: padagonia:latest
+    container_name: padagonia
+    ports:
+      - "7373:7373"
+    volumes:
+      # Mount the host-side Docker config into the container.
+      - ./padagonia.docker.toml:/etc/padagonia/padagonia.toml:ro
+      # Persist graph data across restarts.
+      - padagonia-data:/var/lib/padagonia/data
+    environment:
+      # Override any config values at runtime using the PADAGONIA__ prefix.
+      # Example: PADAGONIA__SERVER__API_KEY: ${PADAGONIA_API_KEY:-padagonia-secret}
+      RUST_LOG: info
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:7373/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  padagonia-data:
