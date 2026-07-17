@@ -88,6 +88,10 @@ impl<'a> QueryEngine<'a> {
         relation_filter: Option<RelationId>,
         min_confidence: Option<f32>,
     ) -> Vec<(NodeId, usize)> {
+        if !self.store.nodes.contains_key(&start) {
+            return Vec::new();
+        }
+
         let mut visited = AHashSet::new();
         let mut queue = std::collections::VecDeque::new();
         queue.push_back((start, 0));

@@ -37,6 +37,10 @@ path = "tests/parallel_decode.rs"
 required = true
 
 [[file]]
+path = "tests/storage_format.rs"
+required = true
+
+[[file]]
 path = "tests/query_tests.rs"
 required = true
 
@@ -72,6 +76,16 @@ required = true
 path = "BENCHMARK_REPORT.md"
 required = true
 require_line_count = 5
+
+[[file]]
+path = "docs/kimi-swarm-correctness.md"
+required = true
+require_line_count = 20
+
+[[file]]
+path = "docs/storage-compatibility.md"
+required = true
+require_line_count = 20
 
 [[command]]
 name = "cargo test"

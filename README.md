@@ -100,7 +100,7 @@ src/
   edge.rs        # Edge struct
   fact.rs        # FactSubject enum
   store.rs       # in-memory Store with indexes + save/load
-  block.rs       # binary block format + file header
+  storage.rs     # binary block format + file header
   query.rs       # QueryEngine traversal/filter API
   projection.rs  # adjacency/JSON/CSV export
   hnsw.rs        # native approximate nearest-neighbor index
@@ -109,10 +109,11 @@ src/
 
 ### Storage format
 
-- File header: magic `PADAGON\n`, version 1, global `StringTable`, block count.
+- File header: magic `PADAGON\n`, version 2, global `StringTable`, block count.
 - Blocks: one per `LabelId` for nodes and one per `RelationId` for edges.
-- Each block stores its `BlockKind`, bincode-encoded payload, and a CRC32 checksum.
+- Each block stores its `BlockKind`, MessagePack-encoded payload, and a CRC32 checksum.
 - Save encodes blocks in parallel with `rayon`; load validates checksums and decodes blocks in parallel.
+- Storage compatibility rules are documented in [docs/storage-compatibility.md](docs/storage-compatibility.md).
 
 ## Contributing
 
@@ -132,6 +133,3 @@ PADAGONIA is licensed under either of the following, at your option:
 Unless you explicitly state otherwise, any contribution intentionally submitted
 for inclusion in PADAGONIA by you, as defined in the Apache-2.0 license, is
 licensed as above without any additional terms or conditions.
-
-
-

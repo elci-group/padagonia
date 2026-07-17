@@ -1,104 +1,123 @@
-# PADAGONIA Roadmap to S-Grade Maturity
+# PADAGONIA Roadmap to SOTA Standards
 
-This roadmap turns PADAGONIA from a working prototype into a commercially mature, S-grade product. Each phase builds on the last and is gated by the `deliver.toml` acceptance suite plus phase-specific checks.
+PADAGONIA is a compact Rust graph store with ontology interning, immutable
+provenance, parallel persistence, HNSW search, CLI tooling, a small HTTP server,
+benchmarks, Docker packaging, and CI. The target is SOTA operational quality:
+correct storage evolution, explicit security posture, measurable performance,
+reproducible releases, and APIs that can be trusted by autonomous agent systems.
 
-## Maturity grading scale
+Current state: **B- open-source prototype**.
 
-- **S** — Enterprise-ready: secure, observable, scalable, legally clear, commercially deployable.
-- **A** — Production-ready for single-tenant or self-hosted deployments.
-- **B** — Solid open-source project with good DX and CI.
-- **C** — Working prototype.
+## Standards Bar
 
-Current state: **C+**.
+- Correctness: storage format changes are versioned, roundtrip-tested, fuzzed,
+  and migration-aware.
+- Performance: benchmark results are reproducible, trendable, and guarded
+  against regressions.
+- Security: dependencies are policy-gated, auth is scoped, mutations are
+  auditable, and release artifacts are signed.
+- Operations: server behavior is observable, configurable, bounded, and
+  documented for self-hosting.
+- Developer experience: CLI output is predictable, docs match code, CI is fast,
+  and every release has a clear compatibility contract.
+- Ecosystem: stable HTTP and client APIs allow agents, MCP servers, and other
+  runtimes to build on PADAGONIA without knowing internal storage details.
 
----
+## Phase 0 - Immediate Hardening (B- to B)
 
-## Phase 1 — Foundation (→ B)
+Goal: close release-readiness gaps found in the July 14, 2026 assessment.
 
-Goal: make the project look and behave like a serious open-source product.
+- [x] Keep `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`,
+  and `cargo test` green.
+- [x] Move server tracing/metrics initialization behind `padagonia server` so
+  non-server CLI commands do not emit misleading server startup logs.
+- [x] Update README storage documentation from `block.rs`/stale serializer notes
+  to `storage.rs`/MessagePack.
+- [x] Bump the on-disk storage format version after the serializer transition.
+- [x] Remove currently unused direct dependencies from `Cargo.toml`.
+- [x] Replace serializers with RustSec warnings with length-prefixed MessagePack
+  frames.
+- [x] Add explicit tests for loading old-format files or document that v1 files
+  are intentionally incompatible.
+- [x] Add a storage-corruption fixture test that verifies CRC and header errors
+  are stable user-facing failures.
 
-- [x] `LICENSE-MIT` / `LICENSE-APACHE` (dual license)
-- [x] `CONTRIBUTING.md`
-- [x] `CODE_OF_CONDUCT.md`
-- [x] `SECURITY.md`
-- [x] `CHANGELOG.md` (Keep a Changelog format)
-- [x] `Cargo.toml` metadata: authors, description, repository, license, keywords, categories, rust-version
-- [x] Configuration layer (`padagonia.toml`/env) using the `config` crate
-- [x] Structured logging with `tracing`
-- [x] Prometheus metrics endpoint (`/metrics`)
-- [x] HTTP server skeleton (`padagonia server`) with Axum
-- [x] Health/readiness endpoints (`/health`, `/ready`)
-- [x] API-key authentication middleware
-- [x] Dockerfile, `.dockerignore`, `docker-compose.yml`, and `padagonia.docker.toml`
-- [x] CI workflow extended with Docker build and `cargo audit`
-- [x] Release workflow building binaries for Linux, macOS, and Windows
+## Phase 1 - Storage Correctness (B to A-)
 
-## Phase 2 — Persistence & Operations (→ B+)
+Goal: make data persistence dependable enough for production self-hosting.
 
-Goal: move from "demo in memory" to "ops-grade data store".
+- [x] Define a public storage compatibility policy in README and release notes.
+- [ ] Introduce a migration layer keyed by storage version.
+- [ ] Add golden binary fixtures for each supported storage version.
+- [ ] Add property/fuzz tests for save/load, corrupted bytes, truncated files,
+  large string tables, empty stores, and competing facts.
+- [ ] Replace whole-file reads on load with bounded streaming decode or document
+  memory limits.
+- [ ] Add snapshot and restore CLI commands.
+- [ ] Add a write-ahead log or equivalent durable mutation journal.
 
-- [ ] Write-ahead log (WAL) for durability
-- [ ] Snapshot/restore commands (`padagonia snapshot`, `padagonia restore`)
-- [ ] Pluggable storage backends (in-memory, Sled, RocksDB)
-- [ ] Backup/restore HTTP API
-- [ ] Graceful shutdown and in-flight request draining
-- [ ] Structured error responses and OpenAPI spec
-- [ ] Integration tests using the HTTP API and Testcontainers
-- [ ] `cargo-deny` license/advisory policy
+## Phase 2 - API And Operations (A- to A)
 
-## Phase 3 — Security & Compliance (→ A)
+Goal: make the server safe and predictable under real operational use.
 
-Goal: pass a security review and support enterprise procurement.
+- [ ] Return structured error bodies for all HTTP failures.
+- [ ] Add OpenAPI output and examples for `/api/v1/*`.
+- [ ] Enforce request body size limits, timeout policy, and rate limiting.
+- [ ] Add integration tests for health, metrics, auth, stats, ingest, and
+  persistence reload behavior.
+- [ ] Persist server mutations to disk or clearly mark the server as ephemeral.
+- [ ] Add graceful shutdown tests for in-flight requests.
+- [ ] Add Docker healthcheck and documented volume layout.
 
-- [ ] TLS for server (native-tls or rustls)
-- [ ] Encryption at rest option for backend stores
-- [ ] RBAC: roles (admin, editor, viewer) and API key scoping
-- [ ] Audit log of all mutations and auth events
-- [ ] Input validation, size limits, rate limiting
-- [ ] Dependency vulnerability scanning in CI (`cargo audit`)
-- [ ] Security review guide and threat model in `SECURITY.md`
-- [ ] Signed release artifacts and SBOM
+## Phase 3 - Security And Supply Chain (A to A+)
 
-## Phase 4 — Scalability (→ A+)
+Goal: pass a serious security review.
 
-Goal: handle production workloads beyond a single node.
+- [ ] Add `cargo-deny` for license, duplicate, advisory, and yanked-crate policy.
+- [ ] Replace plain API-key strings with secret-bearing types once the design
+  justifies the dependency.
+- [ ] Add scoped API keys and roles: admin, writer, reader.
+- [ ] Add audit logs for auth failures and mutations.
+- [ ] Add TLS guidance and a reverse-proxy deployment recipe.
+- [ ] Generate SBOMs for release artifacts.
+- [ ] Sign release artifacts and publish checksums.
+- [ ] Expand `SECURITY.md` with threat model, supported versions, and disclosure
+  workflow.
 
-- [ ] Columnar / GPU-friendly storage layout prototypes
-- [ ] Replication: leader-follower sync protocol
-- [ ] Sharding by semantic cluster
-- [ ] Distributed agent scheduler (Raft/consensus for task ownership)
-- [ ] Benchmark suite expanded to multi-node scenarios
-- [ ] Performance regression gates in CI
+## Phase 4 - Performance Leadership (A+ to S)
 
-## Phase 5 — Commercial SaaS Layer (→ S)
+Goal: make performance claims reproducible and defensible.
 
-Goal: turn Pro from a marketing page into a real managed product.
+- [ ] Convert benchmark scripts into a single reproducible benchmark harness.
+- [ ] Store machine-readable benchmark baselines under versioned artifacts.
+- [ ] Gate major regressions in CI on representative small workloads.
+- [ ] Add memory usage, file size, ingest throughput, load throughput, query
+  latency, and HNSW recall metrics.
+- [ ] Test sparse, dense, skewed, and adversarial graph shapes.
+- [ ] Document hardware, dataset, and configuration for published numbers.
+- [ ] Evaluate storage layout alternatives: streaming blocks, columnar blocks,
+  mmap-friendly indexes, and compressed payloads.
 
-- [ ] Multi-tenant namespace isolation in the server
-- [ ] Organization/member management API
-- [ ] Stripe billing integration and usage metering
-- [ ] Entitlement/feature flags per plan
-- [ ] Admin dashboard (web UI)
-- [ ] SLI/SLO metrics and public status page
-- [ ] Support ticketing integration
-- [ ] SOC 2 / ISO 27001 readiness documentation
-- [ ] Hosted deployment automation (Terraform / Helm)
+## Phase 5 - Agent Ecosystem (S to S+)
 
-## Phase 6 — Ecosystem (→ S+)
+Goal: become a reliable substrate for agentic systems.
 
-Goal: become the default substrate for agentic systems.
+- [ ] Stabilize a versioned HTTP API.
+- [ ] Build Python and TypeScript clients with contract tests.
+- [ ] Add MCP adapter for graph memory operations.
+- [ ] Add import/export formats for common agent memory systems.
+- [ ] Add multi-tenant namespace isolation.
+- [ ] Add replication or backup shipping for managed deployments.
+- [ ] Publish operational runbooks for backup, restore, upgrade, and incident
+  response.
 
-- [ ] Language clients (Python, TypeScript, Go)
-- [ ] Protocol adapters (MCP, A2A, OpenAI Agents SDK)
-- [ ] Managed cloud marketplace listing
-- [ ] Community plugin registry
-- [ ] Certification/training program
+## Execution Rules
 
----
-
-## Execution rules
-
-1. Each phase must keep `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, and the full `deliver.toml` suite green.
-2. New dependencies must be justified and pinned in `Cargo.lock`.
-3. All user-facing changes need docs/website updates.
-4. Commit via `kaptaind` when possible; otherwise use conventional commits.
+1. Every phase keeps `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`,
+   `cargo test`, and relevant CLI smoke tests green.
+2. User-facing behavior changes require README, changelog, and website updates.
+3. Storage format changes require a version bump, fixtures, and migration notes.
+4. New dependencies require an explicit reason and must pass audit/deny policy.
+5. Performance claims require reproducible commands and machine-readable output.
+6. Releases require clean git state, synced `Cargo.toml`/`Cargo.lock`/`VERSION`,
+   generated checksums, and signed artifacts once signing is implemented.

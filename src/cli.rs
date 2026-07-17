@@ -459,6 +459,15 @@ fn cmd_server(args: &[String]) {
     let config_path: &str = parse_flag_str(args, "--config").unwrap_or("padagonia.toml");
     let settings =
         crate::app_config::Settings::load_from(config_path).expect("failed to load configuration");
+    crate::app_config::init_tracing(settings.log_level());
+    let _metrics_handle =
+        crate::server::install_metrics_recorder().expect("failed to install metrics recorder");
+
+    tracing::info!(
+        listen_addr = %settings.listen_addr(),
+        data_dir = %settings.data_dir().display(),
+        "PADAGONIA starting"
+    );
 
     let rt = tokio::runtime::Runtime::new().expect("failed to create Tokio runtime");
     rt.block_on(crate::server::serve(settings))

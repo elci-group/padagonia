@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// Interned string table for ontology strings (labels, relations, property keys).
 /// Serializable so it can be stored as the global dictionary in a PADAGONIA file.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct StringTable {
     by_id: Vec<String>,
     by_str: AHashMap<String, u32>,

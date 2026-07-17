@@ -4,30 +4,45 @@ use crate::edge::Edge;
 use crate::fact::FactSubject;
 use crate::id::{LabelId, RelationId};
 use crate::node::Node;
-use crate::ontology::StringTable;
+use crate::ontology::{StringTable, StringTableExt};
 use crate::provenance::Provenance;
 use crate::store::Store;
 use ahash::AHashMap;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
-use std::io::{BufReader, BufWriter, Write};
+use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::Path;
 use thiserror::Error;
 
 const MAGIC: &[u8; 8] = b"PADAGON\n";
-const VERSION: u8 = 1;
+const VERSION: u8 = 2;
+const MAX_FRAME_BYTES: u64 = 1 << 30;
 
 #[derive(Error, Debug)]
 pub enum StoreError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    #[error("bincode error: {0}")]
-    Bincode(#[from] bincode::Error),
+    #[error("MessagePack encode error: {0}")]
+    MessagePackEncode(#[from] rmp_serde::encode::Error),
+    #[error("MessagePack decode error: {0}")]
+    MessagePackDecode(#[from] rmp_serde::decode::Error),
     #[error("CRC mismatch in block {block_index}")]
     CrcMismatch { block_index: usize },
     #[error("Bad magic or version")]
     BadHeader,
+    #[error("Frame too large: {len} bytes")]
+    FrameTooLarge { len: u64 },
+    #[error("Trailing data after expected blocks: {bytes} bytes")]
+    TrailingBytes { bytes: usize },
+    #[error("Block kind does not match payload")]
+    InconsistentBlockPayload,
+    #[error("Unknown ontology string id {id}")]
+    UnknownStringId { id: u32 },
+    #[error("Dangling edge {edge_id} references missing node")]
+    DanglingEdge { edge_id: u64 },
+    #[error("Dangling fact references missing subject")]
+    DanglingFact,
 }
 
 pub type Result<T> = std::result::Result<T, StoreError>;
@@ -94,7 +109,7 @@ impl Store {
                     label: *label,
                     nodes: nodes.iter().map(|n| (*n).clone()).collect(),
                 };
-                let bytes = bincode::serialize(&payload)?;
+                let bytes = rmp_serde::to_vec(&payload)?;
                 Ok::<_, StoreError>((payload, bytes))
             })
             .collect::<Result<Vec<_>>>()?;
@@ -106,7 +121,7 @@ impl Store {
                     relation: *rel,
                     edges: edges.iter().map(|e| (*e).clone()).collect(),
                 };
-                let bytes = bincode::serialize(&payload)?;
+                let bytes = rmp_serde::to_vec(&payload)?;
                 Ok::<_, StoreError>((payload, bytes))
             })
             .collect::<Result<Vec<_>>>()?;
@@ -118,7 +133,7 @@ impl Store {
             .filter(|(_, facts)| facts.len() > 1)
             .flat_map(|(subject, facts)| facts[1..].iter().map(move |p| (*subject, p.clone())))
             .collect();
-        let fact_bytes = bincode::serialize(&BlockPayload::Facts {
+        let fact_bytes = rmp_serde::to_vec(&BlockPayload::Facts {
             entries: fact_entries,
         })?;
 
@@ -152,9 +167,9 @@ impl Store {
 
         let file = File::create(path)?;
         let mut writer = BufWriter::new(file);
-        bincode::serialize_into(&mut writer, &header)?;
+        write_frame(&mut writer, &header)?;
         for block in &blocks {
-            bincode::serialize_into(&mut writer, block)?;
+            write_frame(&mut writer, block)?;
         }
         writer.flush()?;
         Ok(())
@@ -173,15 +188,22 @@ impl Store {
     fn load_internal<P: AsRef<Path>>(path: P, parallel: bool) -> Result<Self> {
         let file = File::open(path)?;
         let mut reader = BufReader::new(file);
-        let header: FileHeader = bincode::deserialize_from(&mut reader)?;
+        let header: FileHeader = read_frame(&mut reader)?;
         if &header.magic != MAGIC || header.version != VERSION {
             return Err(StoreError::BadHeader);
         }
 
         let mut raw_blocks = Vec::with_capacity(header.block_count as usize);
         for _ in 0..header.block_count {
-            let block: Block = bincode::deserialize_from(&mut reader)?;
+            let block: Block = read_frame(&mut reader)?;
             raw_blocks.push(block);
+        }
+        let mut trailing = Vec::new();
+        reader.read_to_end(&mut trailing)?;
+        if !trailing.is_empty() {
+            return Err(StoreError::TrailingBytes {
+                bytes: trailing.len(),
+            });
         }
 
         let decoded: Vec<(BlockKind, BlockPayload)> = if parallel {
@@ -192,7 +214,7 @@ impl Store {
                     if crc32fast::hash(&block.payload) != block.checksum {
                         return Err(StoreError::CrcMismatch { block_index: idx });
                     }
-                    let payload: BlockPayload = bincode::deserialize(&block.payload)?;
+                    let payload: BlockPayload = rmp_serde::from_slice(&block.payload)?;
                     Ok((block.kind, payload))
                 })
                 .collect::<Result<Vec<_>>>()?
@@ -204,11 +226,13 @@ impl Store {
                     if crc32fast::hash(&block.payload) != block.checksum {
                         return Err(StoreError::CrcMismatch { block_index: idx });
                     }
-                    let payload: BlockPayload = bincode::deserialize(&block.payload)?;
+                    let payload: BlockPayload = rmp_serde::from_slice(&block.payload)?;
                     Ok((block.kind, payload))
                 })
                 .collect::<Result<Vec<_>>>()?
         };
+
+        validate_decoded_blocks(&decoded, &header.string_table)?;
 
         let mut store = Store::new();
         store.string_table = header.string_table;
@@ -233,6 +257,10 @@ impl Store {
         for (_, payload) in &decoded {
             if let BlockPayload::Edges { edges, .. } = payload {
                 for edge in edges {
+                    if !store.nodes.contains_key(&edge.src) || !store.nodes.contains_key(&edge.dst)
+                    {
+                        return Err(StoreError::DanglingEdge { edge_id: edge.id.0 });
+                    }
                     store.next_edge_id = store.next_edge_id.max(edge.id.0 + 1);
                     store
                         .edge_label_index
@@ -266,6 +294,15 @@ impl Store {
         for (_, payload) in &decoded {
             if let BlockPayload::Facts { entries } = payload {
                 for (subject, provenance) in entries {
+                    match subject {
+                        FactSubject::Node(id) if !store.nodes.contains_key(id) => {
+                            return Err(StoreError::DanglingFact);
+                        }
+                        FactSubject::Edge(id) if !store.edges.contains_key(id) => {
+                            return Err(StoreError::DanglingFact);
+                        }
+                        _ => {}
+                    }
                     store
                         .facts
                         .entry(*subject)
@@ -277,4 +314,87 @@ impl Store {
 
         Ok(store)
     }
+}
+
+fn write_frame<W: Write, T: Serialize>(writer: &mut W, value: &T) -> Result<()> {
+    let bytes = rmp_serde::to_vec(value)?;
+    writer.write_all(&(bytes.len() as u64).to_le_bytes())?;
+    writer.write_all(&bytes)?;
+    Ok(())
+}
+
+fn read_frame<R: Read, T: for<'de> Deserialize<'de>>(reader: &mut R) -> Result<T> {
+    let mut len_bytes = [0_u8; 8];
+    reader.read_exact(&mut len_bytes)?;
+    let len = u64::from_le_bytes(len_bytes);
+    if len > MAX_FRAME_BYTES {
+        return Err(StoreError::FrameTooLarge { len });
+    }
+    let len = len as usize;
+    let mut bytes = vec![0_u8; len];
+    reader.read_exact(&mut bytes)?;
+    Ok(rmp_serde::from_slice(&bytes)?)
+}
+
+fn validate_decoded_blocks(
+    decoded: &[(BlockKind, BlockPayload)],
+    string_table: &StringTable,
+) -> Result<()> {
+    for (kind, payload) in decoded {
+        match (kind, payload) {
+            (BlockKind::Nodes(kind_label), BlockPayload::Nodes { label, nodes })
+                if kind_label == label =>
+            {
+                require_label(string_table, *label)?;
+                for node in nodes {
+                    if node.label != *label {
+                        return Err(StoreError::InconsistentBlockPayload);
+                    }
+                    require_label(string_table, node.label)?;
+                    require_keys(string_table, &node.properties)?;
+                }
+            }
+            (BlockKind::Edges(kind_relation), BlockPayload::Edges { relation, edges })
+                if kind_relation == relation =>
+            {
+                require_relation(string_table, *relation)?;
+                for edge in edges {
+                    if edge.label != *relation {
+                        return Err(StoreError::InconsistentBlockPayload);
+                    }
+                    require_relation(string_table, edge.label)?;
+                    require_keys(string_table, &edge.properties)?;
+                }
+            }
+            (BlockKind::Facts, BlockPayload::Facts { .. }) => {}
+            _ => return Err(StoreError::InconsistentBlockPayload),
+        }
+    }
+    Ok(())
+}
+
+fn require_label(string_table: &StringTable, label: LabelId) -> Result<()> {
+    string_table
+        .resolve_label(label)
+        .map(|_| ())
+        .ok_or(StoreError::UnknownStringId { id: label.0 })
+}
+
+fn require_relation(string_table: &StringTable, relation: RelationId) -> Result<()> {
+    string_table
+        .resolve_relation(relation)
+        .map(|_| ())
+        .ok_or(StoreError::UnknownStringId { id: relation.0 })
+}
+
+fn require_keys(
+    string_table: &StringTable,
+    properties: &[(crate::id::KeyId, crate::Scalar)],
+) -> Result<()> {
+    for (key, _) in properties {
+        string_table
+            .resolve_key(*key)
+            .ok_or(StoreError::UnknownStringId { id: key.0 })?;
+    }
+    Ok(())
 }

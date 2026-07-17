@@ -69,6 +69,15 @@ fn bfs_distances_are_correct() {
 }
 
 #[test]
+fn bfs_missing_start_returns_empty() {
+    let store = Store::new();
+    let engine = QueryEngine::new(&store);
+    assert!(engine
+        .bfs(padagonia::NodeId(999), 10, None, None)
+        .is_empty());
+}
+
+#[test]
 fn relation_filter_limits_edges() {
     let mut store = Store::new();
     let a = store.add_node(
