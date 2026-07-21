@@ -1000,7 +1000,7 @@ dependencies = [
 
 [[package]]
 name = "padagonia"
-version = "0.1.5"
+version = "0.1.10"
 dependencies = [
  "ahash",
  "axum",
@@ -1018,6 +1018,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "tower",
  "tower-http",
  "tracing",
  "tracing-subscriber",
@@ -1813,7 +1814,6 @@ dependencies = [
  "bytes",
  "http",
  "http-body",
- "http-body-util",
  "pin-project-lite",
  "tokio",
  "tower-layer",

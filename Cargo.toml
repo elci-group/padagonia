@@ -1,6 +1,6 @@
 [package]
 name = "padagonia"
-version = "0.1.5"
+version = "0.1.10"
 edition = "2021"
 authors = ["ViCo Agent <agent@elci.group>"]
 description = "Ontology-native, immutable, provenance-rich graph store for autonomous AI agents."
@@ -27,13 +27,14 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal"] }
 axum = "0.7"
-tower-http = { version = "0.6", features = ["trace", "timeout", "limit"] }
+tower-http = { version = "0.6", features = ["trace", "timeout"] }
 metrics = "0.24"
 metrics-exporter-prometheus = "0.16"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
 tempfile = "3"
+tower = { version = "0.5", features = ["util"] }
 
 [[bench]]
 name = "padagonia_benchmarks"
