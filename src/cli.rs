@@ -122,6 +122,19 @@ fn parse_flag_str<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
         .map(|s| s.as_str())
 }
 
+/// Print a clean error and exit non-zero instead of panicking on bad input.
+fn die(message: &str) -> ! {
+    eprintln!("{}error:{} {}", BOLD, RESET, message);
+    std::process::exit(1)
+}
+
+fn require<T>(opt: Option<T>, message: &str) -> T {
+    match opt {
+        Some(value) => value,
+        None => die(message),
+    }
+}
+
 pub fn run() {
     let args: Vec<String> = env::args().collect();
 
@@ -158,10 +171,10 @@ pub fn run() {
 }
 
 fn cmd_ingest(args: &[String]) {
-    let nodes: usize = parse_flag(args, "--nodes").expect("--nodes required");
-    let edges: usize = parse_flag(args, "--edges").expect("--edges required");
-    let seed: u64 = parse_flag(args, "--seed").expect("--seed required");
-    let out: &str = parse_flag_str(args, "--out").expect("--out required");
+    let nodes: usize = require(parse_flag(args, "--nodes"), "--nodes required (integer)");
+    let edges: usize = require(parse_flag(args, "--edges"), "--edges required (integer)");
+    let seed: u64 = require(parse_flag(args, "--seed"), "--seed required (integer)");
+    let out: &str = require(parse_flag_str(args, "--out"), "--out required");
 
     let mut store = Store::new();
     let t0 = Instant::now();
@@ -169,7 +182,9 @@ fn cmd_ingest(args: &[String]) {
     let ingest_time = t0.elapsed();
 
     let t1 = Instant::now();
-    store.save(out).expect("save failed");
+    store
+        .save(out)
+        .unwrap_or_else(|e| die(&format!("save failed: {e}")));
     let save_time = t1.elapsed();
 
     let (n, e, f, l, r) = store.stats();
@@ -188,9 +203,9 @@ fn cmd_ingest(args: &[String]) {
 }
 
 fn cmd_load(args: &[String]) {
-    let path: &str = parse_flag_str(args, "--in").expect("--in required");
+    let path: &str = require(parse_flag_str(args, "--in"), "--in required");
     let t0 = Instant::now();
-    let store = Store::load(path).expect("load failed");
+    let store = Store::load(path).unwrap_or_else(|e| die(&format!("load failed: {e}")));
     let load_time = t0.elapsed();
     let (n, e, f, l, r) = store.stats();
     println!(
@@ -205,15 +220,18 @@ fn cmd_load(args: &[String]) {
 }
 
 fn cmd_bfs(args: &[String]) {
-    let path: &str = parse_flag_str(args, "--in").expect("--in required");
-    let start: u64 = parse_flag(args, "--start").expect("--start required");
-    let depth: usize = parse_flag(args, "--depth").expect("--depth required");
+    let path: &str = require(parse_flag_str(args, "--in"), "--in required");
+    let start: u64 = require(parse_flag(args, "--start"), "--start required (integer)");
+    let depth: usize = require(parse_flag(args, "--depth"), "--depth required (integer)");
     let relation: Option<String> = parse_flag_str(args, "--relation").map(|s| s.to_string());
 
-    let store = Store::load(path).expect("load failed");
-    let relation_id = relation
-        .as_ref()
-        .map(|r| store.string_table.relation_id(r).expect("unknown relation"));
+    let store = Store::load(path).unwrap_or_else(|e| die(&format!("load failed: {e}")));
+    let relation_id = relation.as_ref().map(|r| {
+        require(
+            store.string_table().relation_id(r),
+            &format!("unknown relation '{r}'"),
+        )
+    });
     let engine = QueryEngine::new(&store);
     let start_id = crate::NodeId(start);
     let t0 = Instant::now();
@@ -229,20 +247,18 @@ fn cmd_bfs(args: &[String]) {
 }
 
 fn cmd_to_json(args: &[String]) {
-    let path: &str = parse_flag_str(args, "--in").expect("--in required");
-    let out: &str = parse_flag_str(args, "--out").expect("--out required");
-    let store = Store::load(path).expect("load failed");
+    let path: &str = require(parse_flag_str(args, "--in"), "--in required");
+    let out: &str = require(parse_flag_str(args, "--out"), "--out required");
+    let store = Store::load(path).unwrap_or_else(|e| die(&format!("load failed: {e}")));
     let json = store.to_json();
-    fs::write(
-        out,
-        serde_json::to_string_pretty(&json).expect("json serialize"),
-    )
-    .expect("write failed");
+    let text = serde_json::to_string_pretty(&json)
+        .unwrap_or_else(|e| die(&format!("json serialization failed: {e}")));
+    fs::write(out, text).unwrap_or_else(|e| die(&format!("write failed: {e}")));
     println!("wrote {}", out);
 }
 
 fn cmd_vector_search(args: &[String]) {
-    let path: &str = parse_flag_str(args, "--in").expect("--in required");
+    let path: &str = require(parse_flag_str(args, "--in"), "--in required");
     let k: usize = parse_flag(args, "--k").unwrap_or(10);
     let ef: usize = parse_flag(args, "--ef").unwrap_or(50);
     let metric: &str = parse_flag_str(args, "--metric").unwrap_or("euclidean");
@@ -250,46 +266,39 @@ fn cmd_vector_search(args: &[String]) {
 
     let distance = match metric {
         "cosine" => Distance::Cosine,
-        _ => Distance::Euclidean,
+        "euclidean" => Distance::Euclidean,
+        other => die(&format!(
+            "unknown metric '{other}' (expected euclidean|cosine)"
+        )),
     };
 
-    let store = Store::load(path).expect("load failed");
-    let label_id = label
-        .as_ref()
-        .map(|l| store.string_table.label_id(l).expect("unknown label"));
+    let store = Store::load(path).unwrap_or_else(|e| die(&format!("load failed: {e}")));
+    let label_id = label.as_ref().map(|l| {
+        require(
+            store.string_table().label_id(l),
+            &format!("unknown label '{l}'"),
+        )
+    });
 
     // Deterministic query: first node that has an embedding.
     let query = store
-        .nodes
+        .nodes()
         .values()
         .find_map(|n| n.embedding.clone())
         .unwrap_or_default();
+    if query.is_empty() {
+        die("no embeddings found in store");
+    }
 
+    // Warm the cached index (reported separately), then run the query through
+    // the engine so label filters get the ef-doubling retry logic.
     let t0 = Instant::now();
-    let index = store.build_hnsw_index(distance, DEFAULT_M, DEFAULT_EF_CONSTRUCTION, ef.max(k));
+    let index = store.cached_hnsw_index(distance, DEFAULT_M, DEFAULT_EF_CONSTRUCTION, ef.max(k));
     let build_time = t0.elapsed();
 
+    let engine = QueryEngine::new(&store);
     let t1 = Instant::now();
-    let mut results: Vec<(crate::NodeId, f32)> = index
-        .search(&query, k, ef.max(k))
-        .into_iter()
-        .map(|(pid, dist)| (crate::NodeId(pid.0), dist))
-        .collect();
-    if let Some(lid) = label_id {
-        results = results
-            .into_iter()
-            .filter_map(|(nid, dist)| {
-                store.nodes.get(&nid).and_then(|n| {
-                    if n.label == lid {
-                        Some((nid, dist))
-                    } else {
-                        None
-                    }
-                })
-            })
-            .collect();
-        results.truncate(k);
-    }
+    let results = engine.vector_search_with_distance(distance, &query, k, label_id, ef);
     let search_time = t1.elapsed();
 
     println!(
@@ -354,9 +363,11 @@ fn cmd_bench(args: &[String]) {
         let _ = engine.bfs(start, 4, None, None);
         bfs_times.push(t4.elapsed().as_secs_f64());
 
-        let works_for = loaded.string_table.relation_id("works_for").unwrap();
+        let works_for = loaded.string_table.relation_id("works_for");
         let t5 = Instant::now();
-        let _ = engine.by_relation(works_for);
+        if let Some(works_for) = works_for {
+            let _ = engine.by_relation(works_for);
+        }
         filter_times.push(t5.elapsed().as_secs_f64());
     }
 
@@ -457,11 +468,11 @@ fn cmd_bench_vectors(args: &[String]) {
 
 fn cmd_server(args: &[String]) {
     let config_path: &str = parse_flag_str(args, "--config").unwrap_or("padagonia.toml");
-    let settings =
-        crate::app_config::Settings::load_from(config_path).expect("failed to load configuration");
+    let settings = crate::app_config::Settings::load_from(config_path)
+        .unwrap_or_else(|e| die(&format!("failed to load configuration: {e}")));
     crate::app_config::init_tracing(settings.log_level());
-    let _metrics_handle =
-        crate::server::install_metrics_recorder().expect("failed to install metrics recorder");
+    let _metrics_handle = crate::server::install_metrics_recorder()
+        .unwrap_or_else(|e| die(&format!("failed to install metrics recorder: {e}")));
 
     tracing::info!(
         listen_addr = %settings.listen_addr(),
@@ -469,7 +480,8 @@ fn cmd_server(args: &[String]) {
         "PADAGONIA starting"
     );
 
-    let rt = tokio::runtime::Runtime::new().expect("failed to create Tokio runtime");
+    let rt = tokio::runtime::Runtime::new()
+        .unwrap_or_else(|e| die(&format!("failed to create Tokio runtime: {e}")));
     rt.block_on(crate::server::serve(settings))
-        .expect("server failed");
+        .unwrap_or_else(|e| die(&format!("server failed: {e}")));
 }

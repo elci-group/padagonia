@@ -18,8 +18,8 @@ pub mod storage;
 
 pub use edge::Edge;
 pub use fact::FactSubject;
-pub use hnsw::{Distance, HnswIndex, PointId};
-pub use id::{EdgeId, FactId, KeyId, LabelId, NodeId, RelationId};
+pub use hnsw::{Distance, HnswIndex, HnswParams, PointId};
+pub use id::{EdgeId, KeyId, LabelId, NodeId, RelationId};
 pub use node::Node;
 pub use ontology::{StringTable, StringTableExt};
 pub use projection::Projection;

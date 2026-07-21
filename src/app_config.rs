@@ -48,12 +48,14 @@ impl Settings {
         }
     }
 
-    /// Returns the configured data directory / store file path.
+    /// Returns the path of the store file the HTTP server loads and persists.
     ///
-    /// If `server.data_dir` is set it takes precedence, otherwise `storage.data_dir` is used.
+    /// If `server.data_dir` is set it is used verbatim as the store file path;
+    /// otherwise the store lives at `storage.default_graph` inside
+    /// `storage.data_dir`.
     pub fn data_dir(&self) -> PathBuf {
         if self.server.data_dir.is_empty() {
-            PathBuf::from(&self.storage.data_dir)
+            PathBuf::from(&self.storage.data_dir).join(&self.storage.default_graph)
         } else {
             PathBuf::from(&self.server.data_dir)
         }
@@ -64,9 +66,13 @@ impl Settings {
         &self.server.api_key
     }
 
-    /// Returns the path to the default graph file.
-    pub fn default_graph_path(&self) -> PathBuf {
-        PathBuf::from(&self.storage.default_graph)
+    /// Returns the metrics scrape path, defaulting to `/metrics`.
+    pub fn metrics_path(&self) -> &str {
+        if self.server.metrics_path.is_empty() {
+            "/metrics"
+        } else {
+            &self.server.metrics_path
+        }
     }
 
     /// Returns the default tracing/log level.

@@ -38,7 +38,7 @@ fn bench_save(c: &mut Criterion) {
     let tmp = make_tmp();
     let mut group = c.benchmark_group("save");
     group.throughput(Throughput::Elements(
-        (store.nodes.len() + store.edges.len()) as u64,
+        (store.nodes().len() + store.edges().len()) as u64,
     ));
     group.bench_function("100k_500k", |b| {
         b.iter(|| {
@@ -77,7 +77,7 @@ fn bench_bfs(c: &mut Criterion) {
     generate_powerlaw(&mut store, 100_000, 500_000, 99);
     let engine = QueryEngine::new(&store);
     let start = store
-        .outgoing
+        .outgoing()
         .keys()
         .next()
         .copied()
@@ -97,7 +97,7 @@ fn bench_filter(c: &mut Criterion) {
     let mut store = Store::new();
     generate_powerlaw(&mut store, 100_000, 500_000, 99);
     let engine = QueryEngine::new(&store);
-    let works_for = store.string_table.relation_id("works_for").unwrap();
+    let works_for = store.string_table().relation_id("works_for").unwrap();
 
     let mut group = c.benchmark_group("filter");
     group.bench_function("by_relation_100k_500k", |b| {

@@ -13,10 +13,10 @@ fn load_and_load_seq_are_identical() {
     let parallel = Store::load(&path).unwrap();
     let sequential = Store::load_seq(&path).unwrap();
 
-    assert_eq!(parallel.nodes, sequential.nodes);
-    assert_eq!(parallel.edges, sequential.edges);
-    assert_eq!(parallel.next_node_id, sequential.next_node_id);
-    assert_eq!(parallel.next_edge_id, sequential.next_edge_id);
+    assert_eq!(parallel.nodes(), sequential.nodes());
+    assert_eq!(parallel.edges(), sequential.edges());
+    assert_eq!(parallel.next_node_id(), sequential.next_node_id());
+    assert_eq!(parallel.next_edge_id(), sequential.next_edge_id());
 
     fs::remove_file(&path).ok();
 }

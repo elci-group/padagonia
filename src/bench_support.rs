@@ -38,6 +38,9 @@ const RELATIONS: &[&str] = &["works_for", "knows", "located_in", "related_to"];
 
 /// Generate a deterministic power-law-ish graph for benchmarking.
 pub fn generate_powerlaw(store: &mut Store, nodes: usize, edges: usize, seed: u64) {
+    if nodes == 0 {
+        return;
+    }
     let mut rng = Rng::new(seed);
     let provenance = Provenance::new(
         "bench_agent",

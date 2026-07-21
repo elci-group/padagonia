@@ -1,6 +1,6 @@
 use crate::edge::Edge;
 use crate::fact::FactSubject;
-use crate::hnsw::{Distance, DEFAULT_EF_CONSTRUCTION, DEFAULT_M};
+use crate::hnsw::{Distance, HnswParams};
 use crate::id::{LabelId, NodeId, RelationId};
 use crate::node::Node;
 use crate::provenance::Provenance;
@@ -154,13 +154,15 @@ impl<'a> QueryEngine<'a> {
 
     pub fn highest_confidence_fact(&self, subject: FactSubject) -> Option<&'a Provenance> {
         self.store.facts.get(&subject).and_then(|facts| {
-            facts
-                .iter()
-                .max_by(|a, b| a.confidence.partial_cmp(&b.confidence).unwrap())
+            facts.iter().max_by(|a, b| {
+                a.confidence
+                    .partial_cmp(&b.confidence)
+                    .unwrap_or(Ordering::Equal)
+            })
         })
     }
 
-    /// Approximate vector search over node embeddings.
+    /// Approximate vector search over node embeddings using Euclidean distance.
     pub fn vector_search(
         &self,
         query: &[f32],
@@ -168,13 +170,45 @@ impl<'a> QueryEngine<'a> {
         label_filter: Option<LabelId>,
         ef: usize,
     ) -> Vec<(NodeId, f32)> {
-        let index = self.store.build_hnsw_index(
-            Distance::Euclidean,
-            DEFAULT_M,
-            DEFAULT_EF_CONSTRUCTION,
-            ef.max(k),
+        self.vector_search_with_distance(Distance::Euclidean, query, k, label_filter, ef)
+    }
+
+    /// Approximate vector search over node embeddings with a chosen metric.
+    ///
+    /// The HNSW index is cached on the store and shared across calls; it is
+    /// only rebuilt when nodes are added or the construction parameters
+    /// change, so repeated queries do not pay the build cost.
+    pub fn vector_search_with_distance(
+        &self,
+        distance: Distance,
+        query: &[f32],
+        k: usize,
+        label_filter: Option<LabelId>,
+        ef: usize,
+    ) -> Vec<(NodeId, f32)> {
+        let params = HnswParams {
+            ef_search: ef,
+            ..HnswParams::default()
+        };
+        self.vector_search_with_params(distance, params, query, k, label_filter)
+    }
+
+    /// Approximate vector search with explicit HNSW parameters.
+    pub fn vector_search_with_params(
+        &self,
+        distance: Distance,
+        params: HnswParams,
+        query: &[f32],
+        k: usize,
+        label_filter: Option<LabelId>,
+    ) -> Vec<(NodeId, f32)> {
+        let index = self.store.cached_hnsw_index(
+            distance,
+            params.m,
+            params.ef_construction,
+            params.ef_search.max(k),
         );
-        let mut ef_cur = ef.max(k);
+        let mut ef_cur = params.ef_search.max(k);
         loop {
             let results = index.search(query, k, ef_cur);
             let mut filtered: Vec<_> = results

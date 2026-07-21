@@ -21,25 +21,24 @@ fn scalar_to_json(scalar: &crate::value::Scalar) -> Value {
         Scalar::Null => Value::Null,
         Scalar::Bool(b) => Value::Bool(*b),
         Scalar::I64(i) => Value::Number((*i).into()),
-        Scalar::F64(f) => {
-            Value::Number(serde_json::Number::from_f64(*f).unwrap_or_else(|| 0.into()))
-        }
+        // JSON has no representation for NaN/infinity: emit null rather than
+        // silently coercing to 0.
+        Scalar::F64(f) => serde_json::Number::from_f64(*f).map_or(Value::Null, Value::Number),
         Scalar::String(s) => Value::String(s.clone()),
         Scalar::Bytes(b) => Value::Array(b.iter().map(|x| Value::Number((*x).into())).collect()),
         Scalar::Embedding(v) => Value::Array(
             v.iter()
-                .map(|x| {
-                    Value::Number(
-                        serde_json::Number::from_f64(*x as f64).unwrap_or_else(|| 0.into()),
-                    )
-                })
+                .map(|x| serde_json::Number::from_f64(*x as f64).map_or(Value::Null, Value::Number))
                 .collect(),
         ),
         Scalar::Timestamp(t) => Value::Number((*t).into()),
     }
 }
 
-fn props_to_json(props: &[(crate::id::KeyId, crate::value::Scalar)], store: &Store) -> Value {
+pub(crate) fn props_to_json(
+    props: &[(crate::id::KeyId, crate::value::Scalar)],
+    store: &Store,
+) -> Value {
     let mut map = Map::new();
     for (k, v) in props {
         let key = store
@@ -87,10 +86,8 @@ impl Projection for Store {
                         Value::Array(
                             emb.iter()
                                 .map(|x| {
-                                    Value::Number(
-                                        serde_json::Number::from_f64(*x as f64)
-                                            .unwrap_or_else(|| 0.into()),
-                                    )
+                                    serde_json::Number::from_f64(*x as f64)
+                                        .map_or(Value::Null, Value::Number)
                                 })
                                 .collect(),
                         ),
@@ -182,9 +179,9 @@ impl Projection for Store {
                 serde_json::to_string(&props_to_json(&node.properties, self)).unwrap_or_default();
             writeln!(
                 writer,
-                "{},{},\"{}\"",
+                "{},\"{}\",\"{}\"",
                 node.id.0,
-                label,
+                label.replace('"', "\"\""),
                 props.replace('"', "\"\"")
             )?;
         }
@@ -204,11 +201,11 @@ impl Projection for Store {
                 serde_json::to_string(&props_to_json(&edge.properties, self)).unwrap_or_default();
             writeln!(
                 writer,
-                "{},{},{},{},\"{}\"",
+                "{},{},{},\"{}\",\"{}\"",
                 edge.id.0,
                 edge.src.0,
                 edge.dst.0,
-                label,
+                label.replace('"', "\"\""),
                 props.replace('"', "\"\"")
             )?;
         }

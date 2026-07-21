@@ -117,7 +117,7 @@ fn relation_filter_limits_edges() {
     );
 
     let engine = QueryEngine::new(&store);
-    let knows_id = store.string_table.relation_id("knows").unwrap();
+    let knows_id = store.string_table().relation_id("knows").unwrap();
     let outgoing_knows = engine.outgoing(a, Some(knows_id));
     assert_eq!(outgoing_knows.len(), 1);
     assert_eq!(outgoing_knows[0].dst, b);
@@ -173,10 +173,10 @@ fn by_label_counts_match() {
     let mut store = Store::new();
     generate_powerlaw(&mut store, 1000, 5000, 13);
     let engine = QueryEngine::new(&store);
-    let person_id = store.string_table.label_id("Person").unwrap();
+    let person_id = store.string_table().label_id("Person").unwrap();
     let by_person = engine.by_label(person_id);
     let brute_force: Vec<_> = store
-        .nodes
+        .nodes()
         .values()
         .filter(|n| n.label == person_id)
         .collect();

@@ -47,7 +47,6 @@ macro_rules! id_u32 {
 
 id_u64!(NodeId);
 id_u64!(EdgeId);
-id_u64!(FactId);
 id_u32!(LabelId);
 id_u32!(RelationId);
 id_u32!(KeyId);

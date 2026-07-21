@@ -24,6 +24,24 @@ pub type PointId = NodeId;
 pub const DEFAULT_M: usize = 16;
 pub const DEFAULT_EF_CONSTRUCTION: usize = 64;
 
+/// HNSW construction and search parameters bundled for query APIs.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct HnswParams {
+    pub m: usize,
+    pub ef_construction: usize,
+    pub ef_search: usize,
+}
+
+impl Default for HnswParams {
+    fn default() -> Self {
+        Self {
+            m: DEFAULT_M,
+            ef_construction: DEFAULT_EF_CONSTRUCTION,
+            ef_search: 50,
+        }
+    }
+}
+
 /// Default layer-0 link multiplier.
 ///
 /// The fast-hnsw crate derives each node's level from `M` as
@@ -72,7 +90,6 @@ impl FastDistance for InnerMetric {
 pub struct HnswIndex {
     inner: Hnsw<InnerMetric>,
     id_map: Vec<PointId>,
-    #[allow(dead_code)]
     ef_search: usize,
 }
 
@@ -130,7 +147,8 @@ impl HnswIndex {
     /// Approximate k-NN search.
     ///
     /// `ef` controls the size of the dynamic candidate list. The effective
-    /// search ef is at least `k`.
+    /// search ef is at least `max(k, ef_search)` where `ef_search` is the
+    /// default configured when the index was built.
     pub fn search(&self, query: &[f32], k: usize, ef: usize) -> Vec<(PointId, f32)> {
         if self.is_empty() {
             return Vec::new();
@@ -139,6 +157,7 @@ impl HnswIndex {
         if k == 0 {
             return Vec::new();
         }
+        let ef = ef.max(self.ef_search).max(k);
         self.inner
             .search(query, k, ef)
             .into_iter()

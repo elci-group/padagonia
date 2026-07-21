@@ -1,8 +1,8 @@
 # Example PADAGONIA configuration file.
 # Copy this file to `padagonia.toml` and adjust values as needed.
 # Settings can also be overridden via environment variables using the
-# prefix `PADAGONIA__` and double underscores for nested keys, e.g.:
-#   PADAGONIA__SERVER__LISTEN_ADDR=127.0.0.1:8080
+# prefix `PADAGONIA_` and double underscores for nested keys, e.g.:
+#   PADAGONIA_SERVER__LISTEN_ADDR=127.0.0.1:8080
 
 [server]
 listen_addr = "127.0.0.1:8080"

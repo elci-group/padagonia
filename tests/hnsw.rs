@@ -49,7 +49,7 @@ fn exact_when_k_equals_n() {
 
     // Query using the first vector in the store.
     let query = store
-        .nodes
+        .nodes()
         .values()
         .next()
         .and_then(|n| n.embedding.clone())
@@ -58,7 +58,7 @@ fn exact_when_k_equals_n() {
     assert_eq!(results.len(), 50);
 
     let returned: HashSet<NodeId> = results.into_iter().map(|(pid, _)| NodeId(pid.0)).collect();
-    let all: HashSet<NodeId> = store.nodes.keys().copied().collect();
+    let all: HashSet<NodeId> = store.nodes().keys().copied().collect();
     assert_eq!(returned, all);
 }
 
@@ -80,13 +80,13 @@ fn label_filter_works() {
     }
 
     let engine = QueryEngine::new(&store);
-    let label_a = store.string_table.label_id("A").unwrap();
+    let label_a = store.string_table().label_id("A").unwrap();
     let query: Vec<f32> = (0..16).map(|_| rng.next_f32()).collect();
     let results = engine.vector_search(&query, 10, Some(label_a), 50);
 
     assert!(!results.is_empty());
     for (nid, _) in &results {
-        let node = &store.nodes[nid];
+        let node = &store.nodes()[nid];
         assert_eq!(node.label, label_a);
     }
 }

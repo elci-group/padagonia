@@ -13,39 +13,39 @@ fn roundtrip_preserves_nodes_edges() {
 
     let loaded = Store::load(path).unwrap();
 
-    assert_eq!(original.nodes.len(), loaded.nodes.len());
-    assert_eq!(original.edges.len(), loaded.edges.len());
+    assert_eq!(original.nodes().len(), loaded.nodes().len());
+    assert_eq!(original.edges().len(), loaded.edges().len());
 
-    for (id, node) in &original.nodes {
-        let other = loaded.nodes.get(id).expect("node missing");
+    for (id, node) in original.nodes() {
+        let other = loaded.nodes().get(id).expect("node missing");
         assert_eq!(node, other);
     }
 
-    for (id, edge) in &original.edges {
-        let other = loaded.edges.get(id).expect("edge missing");
+    for (id, edge) in original.edges() {
+        let other = loaded.edges().get(id).expect("edge missing");
         assert_eq!(edge, other);
     }
 
-    assert_eq!(original.facts, loaded.facts);
-    assert_eq!(original.string_table, loaded.string_table);
+    assert_eq!(original.facts(), loaded.facts());
+    assert_eq!(original.string_table(), loaded.string_table());
     assert_eq!(
-        sorted_index(&original.node_label_index),
-        sorted_index(&loaded.node_label_index)
+        sorted_index(original.node_label_index()),
+        sorted_index(loaded.node_label_index())
     );
     assert_eq!(
-        sorted_index(&original.edge_label_index),
-        sorted_index(&loaded.edge_label_index)
+        sorted_index(original.edge_label_index()),
+        sorted_index(loaded.edge_label_index())
     );
     assert_eq!(
-        sorted_index(&original.outgoing),
-        sorted_index(&loaded.outgoing)
+        sorted_index(original.outgoing()),
+        sorted_index(loaded.outgoing())
     );
     assert_eq!(
-        sorted_index(&original.incoming),
-        sorted_index(&loaded.incoming)
+        sorted_index(original.incoming()),
+        sorted_index(loaded.incoming())
     );
-    assert_eq!(original.next_node_id, loaded.next_node_id);
-    assert_eq!(original.next_edge_id, loaded.next_edge_id);
+    assert_eq!(original.next_node_id(), loaded.next_node_id());
+    assert_eq!(original.next_edge_id(), loaded.next_edge_id());
     assert_eq!(original.stats(), loaded.stats());
 }
 
