@@ -2,9 +2,12 @@
 //! write-through persistence, and graceful shutdown.
 
 use crate::app_config::Settings;
+use crate::auth::auth_middleware;
 use crate::bench_support::generate_powerlaw;
 use crate::hnsw::{Distance, HnswParams};
+use crate::http_error::{bad_request, internal_error, not_found, ApiResult};
 use crate::id::NodeId;
+use crate::metrics::get_metrics_handle;
 use crate::ontology::StringTableExt;
 use crate::projection::props_to_json;
 use crate::provenance::Provenance;
@@ -13,13 +16,12 @@ use crate::store::Store;
 use crate::value::Scalar;
 use axum::{
     extract::{Path, State},
-    http::{Request, StatusCode},
-    middleware::{self, Next},
-    response::{IntoResponse, Response},
+    http::StatusCode,
+    response::IntoResponse,
     routing::{get, post},
     Json, Router,
 };
-use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
+use metrics_exporter_prometheus::PrometheusHandle;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path as FsPath, PathBuf};
@@ -27,26 +29,6 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 use tower_http::{timeout::TimeoutLayer, trace::TraceLayer};
-
-/// Global handle to the Prometheus recorder so the HTTP server can render the
-/// metrics endpoint without needing the handle passed through the CLI layer.
-static METRICS_HANDLE: std::sync::OnceLock<PrometheusHandle> = std::sync::OnceLock::new();
-
-/// Installs a Prometheus metrics recorder and returns a handle for rendering scrape output.
-///
-/// The handle is also stashed in a global so `serve()` can retrieve it later.
-pub fn install_metrics_recorder(
-) -> Result<PrometheusHandle, metrics_exporter_prometheus::BuildError> {
-    let handle = PrometheusBuilder::new()
-        .add_global_label("service", "padagonia")
-        .install_recorder()?;
-    let _ = METRICS_HANDLE.set(handle.clone());
-    Ok(handle)
-}
-
-fn get_metrics_handle() -> Option<PrometheusHandle> {
-    METRICS_HANDLE.get().cloned()
-}
 
 /// Shared state behind the HTTP API.
 #[derive(Clone)]
@@ -77,35 +59,6 @@ impl AppState {
     }
 }
 
-type ApiResult<T> = Result<T, (StatusCode, Json<ErrorResponse>)>;
-
-fn bad_request(message: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
-    (
-        StatusCode::BAD_REQUEST,
-        Json(ErrorResponse {
-            error: message.into(),
-        }),
-    )
-}
-
-fn internal_error(message: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(ErrorResponse {
-            error: message.into(),
-        }),
-    )
-}
-
-fn not_found(message: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
-    (
-        StatusCode::NOT_FOUND,
-        Json(ErrorResponse {
-            error: message.into(),
-        }),
-    )
-}
-
 /// JSON response body for `/api/v1/stats` and `/api/v1/ingest`.
 #[derive(Serialize)]
 struct StatsResponse {
@@ -114,12 +67,6 @@ struct StatsResponse {
     facts: usize,
     labels: usize,
     relations: usize,
-}
-
-/// JSON error body returned by the mutation/query endpoints.
-#[derive(Serialize)]
-struct ErrorResponse {
-    error: String,
 }
 
 /// JSON response body for the node/edge creation endpoints.
@@ -283,9 +230,9 @@ pub fn router(state: AppState, metrics_path: &str) -> Router {
         .route("/edges", post(create_edge_handler))
         .route("/bfs", post(bfs_handler))
         .route("/vector-search", post(vector_search_handler))
-        .route_layer(middleware::from_fn_with_state(
-            state.clone(),
-            require_api_key,
+        .route_layer(axum::middleware::from_fn_with_state(
+            state.api_key.clone(),
+            auth_middleware,
         ));
 
     Router::new()
@@ -583,41 +530,6 @@ async fn vector_search_handler(
     ))
 }
 
-/// Constant-time byte-string comparison for bearer tokens.
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    a.iter()
-        .zip(b.iter())
-        .fold(0_u8, |acc, (x, y)| acc | (x ^ y))
-        == 0
-}
-
-/// Bearer-token API-key middleware.
-///
-/// Reads the `Authorization: Bearer <token>` header and compares it to the
-/// configured key in constant time. Returns 401 if the header is missing,
-/// malformed, or invalid.
-async fn require_api_key(
-    State(state): State<AppState>,
-    request: Request<axum::body::Body>,
-    next: Next,
-) -> Result<Response, StatusCode> {
-    let expected = format!("Bearer {}", state.api_key);
-    let auth_header = request
-        .headers()
-        .get("authorization")
-        .and_then(|v| v.to_str().ok());
-
-    match auth_header {
-        Some(header) if constant_time_eq(header.as_bytes(), expected.as_bytes()) => {
-            Ok(next.run(request).await)
-        }
-        _ => Err(StatusCode::UNAUTHORIZED),
-    }
-}
-
 /// Wait for SIGTERM (Unix) or Ctrl-C, whichever comes first.
 async fn shutdown_signal() {
     let ctrl_c = async {
@@ -643,14 +555,6 @@ async fn shutdown_signal() {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn constant_time_eq_matches_only_identical_inputs() {
-        assert!(constant_time_eq(b"Bearer s3cret", b"Bearer s3cret"));
-        assert!(!constant_time_eq(b"Bearer s3cret", b"Bearer s3creX"));
-        assert!(!constant_time_eq(b"Bearer s3cret", b"Bearer"));
-        assert!(!constant_time_eq(b"", b"Bearer "));
-    }
 
     #[tokio::test]
     async fn serve_rejects_empty_api_key_before_binding() {

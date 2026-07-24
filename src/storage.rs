@@ -1,88 +1,91 @@
 //! On-disk storage format: file header, blocks, checksums, and parallel save/load.
 
+use crate::block::{Block, BlockKind, BlockPayload, FileHeader, MAGIC, VERSION};
+use crate::checksum::validate_checksum;
 use crate::edge::Edge;
 use crate::fact::FactSubject;
+use crate::frame::{read_frame, write_frame};
 use crate::id::{LabelId, RelationId};
+use crate::migration::MigrationManager;
 use crate::node::Node;
 use crate::ontology::{StringTable, StringTableExt};
-use crate::provenance::Provenance;
 use crate::store::Store;
 use ahash::AHashMap;
 use rayon::prelude::*;
-use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::Path;
-use thiserror::Error;
 
-const MAGIC: &[u8; 8] = b"PADAGON\n";
-const VERSION: u8 = 2;
-const MAX_FRAME_BYTES: u64 = 1 << 30;
-
-#[derive(Error, Debug)]
+#[derive(Debug)]
 pub enum StoreError {
-    #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
-    #[error("MessagePack encode error: {0}")]
-    MessagePackEncode(#[from] rmp_serde::encode::Error),
-    #[error("MessagePack decode error: {0}")]
-    MessagePackDecode(#[from] rmp_serde::decode::Error),
-    #[error("CRC mismatch in block {block_index}")]
+    Io(std::io::Error),
+    MessagePackEncode(rmp_serde::encode::Error),
+    MessagePackDecode(rmp_serde::decode::Error),
     CrcMismatch { block_index: usize },
-    #[error("Bad magic or version")]
     BadHeader,
-    #[error("Frame too large: {len} bytes")]
     FrameTooLarge { len: u64 },
-    #[error("Trailing data after expected blocks: {bytes} bytes")]
     TrailingBytes { bytes: usize },
-    #[error("Block kind does not match payload")]
     InconsistentBlockPayload,
-    #[error("Unknown ontology string id {id}")]
     UnknownStringId { id: u32 },
-    #[error("Dangling edge {edge_id} references missing node")]
     DanglingEdge { edge_id: u64 },
-    #[error("Dangling fact references missing subject")]
     DanglingFact,
 }
 
+impl fmt::Display for StoreError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            StoreError::Io(err) => write!(f, "IO error: {}", err),
+            StoreError::MessagePackEncode(err) => write!(f, "MessagePack encode error: {}", err),
+            StoreError::MessagePackDecode(err) => write!(f, "MessagePack decode error: {}", err),
+            StoreError::CrcMismatch { block_index } => {
+                write!(f, "CRC mismatch in block {}", block_index)
+            }
+            StoreError::BadHeader => write!(f, "Bad magic or version"),
+            StoreError::FrameTooLarge { len } => write!(f, "Frame too large: {} bytes", len),
+            StoreError::TrailingBytes { bytes } => {
+                write!(f, "Trailing data after expected blocks: {} bytes", bytes)
+            }
+            StoreError::InconsistentBlockPayload => write!(f, "Block kind does not match payload"),
+            StoreError::UnknownStringId { id } => write!(f, "Unknown ontology string id {}", id),
+            StoreError::DanglingEdge { edge_id } => {
+                write!(f, "Dangling edge {} references missing node", edge_id)
+            }
+            StoreError::DanglingFact => write!(f, "Dangling fact references missing subject"),
+        }
+    }
+}
+
+impl std::error::Error for StoreError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            StoreError::Io(err) => Some(err),
+            StoreError::MessagePackEncode(err) => Some(err),
+            StoreError::MessagePackDecode(err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl From<std::io::Error> for StoreError {
+    fn from(err: std::io::Error) -> Self {
+        StoreError::Io(err)
+    }
+}
+
+impl From<rmp_serde::encode::Error> for StoreError {
+    fn from(err: rmp_serde::encode::Error) -> Self {
+        StoreError::MessagePackEncode(err)
+    }
+}
+
+impl From<rmp_serde::decode::Error> for StoreError {
+    fn from(err: rmp_serde::decode::Error) -> Self {
+        StoreError::MessagePackDecode(err)
+    }
+}
+
 pub type Result<T> = std::result::Result<T, StoreError>;
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum BlockKind {
-    Nodes(LabelId),
-    Edges(RelationId),
-    Facts,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum BlockPayload {
-    Nodes {
-        label: LabelId,
-        nodes: Vec<Node>,
-    },
-    Edges {
-        relation: RelationId,
-        edges: Vec<Edge>,
-    },
-    Facts {
-        entries: Vec<(FactSubject, Provenance)>,
-    },
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Block {
-    pub kind: BlockKind,
-    pub payload: Vec<u8>,
-    pub checksum: u32,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct FileHeader {
-    pub magic: [u8; 8],
-    pub version: u8,
-    pub string_table: StringTable,
-    pub block_count: u64,
-}
 
 impl Store {
     /// Partition nodes by label and edges by relation, encode blocks in parallel, and write
@@ -139,31 +142,14 @@ impl Store {
 
         let mut blocks = Vec::with_capacity(node_payloads.len() + edge_payloads.len() + 1);
         for ((label, _), (_, bytes)) in node_blocks.iter().zip(node_payloads.iter()) {
-            blocks.push(Block {
-                kind: BlockKind::Nodes(*label),
-                payload: bytes.clone(),
-                checksum: crc32fast::hash(bytes),
-            });
+            blocks.push(Block::new(BlockKind::Nodes(*label), bytes.clone()));
         }
         for ((rel, _), (_, bytes)) in edge_blocks.iter().zip(edge_payloads.iter()) {
-            blocks.push(Block {
-                kind: BlockKind::Edges(*rel),
-                payload: bytes.clone(),
-                checksum: crc32fast::hash(bytes),
-            });
+            blocks.push(Block::new(BlockKind::Edges(*rel), bytes.clone()));
         }
-        blocks.push(Block {
-            kind: BlockKind::Facts,
-            payload: fact_bytes.clone(),
-            checksum: crc32fast::hash(&fact_bytes),
-        });
+        blocks.push(Block::new(BlockKind::Facts, fact_bytes.clone()));
 
-        let header = FileHeader {
-            magic: *MAGIC,
-            version: VERSION,
-            string_table: self.string_table.clone(),
-            block_count: blocks.len() as u64,
-        };
+        let header = FileHeader::new(self.string_table.clone(), blocks.len() as u64);
 
         let file = File::create(path)?;
         let mut writer = BufWriter::new(file);
@@ -189,10 +175,21 @@ impl Store {
         let file = File::open(path)?;
         let mut reader = BufReader::new(file);
         let header: FileHeader = read_frame(&mut reader)?;
-        if &header.magic != MAGIC || header.version != VERSION {
+        if &header.magic != MAGIC {
             return Err(StoreError::BadHeader);
         }
 
+        // Check if migration is needed
+        if MigrationManager::needs_migration(&header) {
+            // For MVP, we reject old versions
+            return Err(StoreError::BadHeader);
+        }
+
+        if header.version != VERSION {
+            return Err(StoreError::BadHeader);
+        }
+
+        // Continue with normal loading using the already-parsed header
         let mut raw_blocks = Vec::with_capacity(header.block_count as usize);
         for _ in 0..header.block_count {
             let block: Block = read_frame(&mut reader)?;
@@ -211,7 +208,7 @@ impl Store {
                 .into_par_iter()
                 .enumerate()
                 .map(|(idx, block)| {
-                    if crc32fast::hash(&block.payload) != block.checksum {
+                    if !validate_checksum(&block.payload, block.checksum) {
                         return Err(StoreError::CrcMismatch { block_index: idx });
                     }
                     let payload: BlockPayload = rmp_serde::from_slice(&block.payload)?;
@@ -223,7 +220,7 @@ impl Store {
                 .into_iter()
                 .enumerate()
                 .map(|(idx, block)| {
-                    if crc32fast::hash(&block.payload) != block.checksum {
+                    if !validate_checksum(&block.payload, block.checksum) {
                         return Err(StoreError::CrcMismatch { block_index: idx });
                     }
                     let payload: BlockPayload = rmp_serde::from_slice(&block.payload)?;
@@ -314,26 +311,6 @@ impl Store {
 
         Ok(store)
     }
-}
-
-fn write_frame<W: Write, T: Serialize>(writer: &mut W, value: &T) -> Result<()> {
-    let bytes = rmp_serde::to_vec(value)?;
-    writer.write_all(&(bytes.len() as u64).to_le_bytes())?;
-    writer.write_all(&bytes)?;
-    Ok(())
-}
-
-fn read_frame<R: Read, T: for<'de> Deserialize<'de>>(reader: &mut R) -> Result<T> {
-    let mut len_bytes = [0_u8; 8];
-    reader.read_exact(&mut len_bytes)?;
-    let len = u64::from_le_bytes(len_bytes);
-    if len > MAX_FRAME_BYTES {
-        return Err(StoreError::FrameTooLarge { len });
-    }
-    let len = len as usize;
-    let mut bytes = vec![0_u8; len];
-    reader.read_exact(&mut bytes)?;
-    Ok(rmp_serde::from_slice(&bytes)?)
 }
 
 fn validate_decoded_blocks(

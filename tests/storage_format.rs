@@ -1,7 +1,8 @@
 use padagonia::bench_support::generate_powerlaw;
 use padagonia::id::{LabelId, NodeId};
-use padagonia::storage::{Block, BlockKind, BlockPayload, FileHeader, StoreError};
+use padagonia::storage::StoreError;
 use padagonia::store::Store;
+use padagonia::{compute_checksum, Block, BlockKind, BlockPayload, FileHeader, MAX_FRAME_BYTES};
 use std::fs;
 
 #[test]
@@ -33,6 +34,7 @@ fn old_storage_version_is_rejected() {
     rewritten.extend_from_slice(&bytes[rest_offset..]);
     fs::write(tmp.path(), rewritten).unwrap();
 
+    // Old versions are rejected by migration layer (MVP behavior)
     assert!(matches!(
         Store::load(tmp.path()),
         Err(StoreError::BadHeader)
@@ -84,11 +86,11 @@ fn trailing_bytes_after_declared_blocks_are_rejected() {
 #[test]
 fn oversized_frame_is_rejected_before_allocation() {
     let tmp = tempfile::NamedTempFile::new().unwrap();
-    fs::write(tmp.path(), (1_u64 << 40).to_le_bytes()).unwrap();
+    fs::write(tmp.path(), (MAX_FRAME_BYTES + 1).to_le_bytes()).unwrap();
 
     assert!(matches!(
         Store::load(tmp.path()),
-        Err(StoreError::FrameTooLarge { len }) if len == (1_u64 << 40)
+        Err(StoreError::FrameTooLarge { len }) if len == (MAX_FRAME_BYTES + 1)
     ));
 }
 
@@ -108,7 +110,7 @@ fn mismatched_block_kind_and_payload_are_rejected() {
     } else {
         panic!("expected first block to contain nodes");
     }
-    block.checksum = crc32fast::hash(&block.payload);
+    block.checksum = compute_checksum(&block.payload);
 
     let mut rewritten = encode_frame(&header);
     rewritten.extend_from_slice(&encode_frame(&block));
@@ -142,7 +144,7 @@ fn node_label_outside_string_table_is_rejected() {
         panic!("expected first block to contain nodes");
     }
     block.payload = rmp_serde::to_vec(&payload).unwrap();
-    block.checksum = crc32fast::hash(&block.payload);
+    block.checksum = compute_checksum(&block.payload);
 
     let mut rewritten = encode_frame(&header);
     rewritten.extend_from_slice(&encode_frame(&block));
@@ -187,7 +189,7 @@ fn dangling_edge_is_rejected() {
         panic!("expected second block to contain edges");
     }
     edge_block.payload = rmp_serde::to_vec(&payload).unwrap();
-    edge_block.checksum = crc32fast::hash(&edge_block.payload);
+    edge_block.checksum = compute_checksum(&edge_block.payload);
 
     let mut rewritten = encode_frame(&header);
     rewritten.extend_from_slice(&prefix);

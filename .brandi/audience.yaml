@@ -1,0 +1,19 @@
+segments:
+  - name: ai_researchers
+    description: "Researchers building autonomous AI agents and knowledge systems"
+    pains: ["unreliable knowledge bases", "lack of provenance", "data corruption"]
+  - name: ml_engineers
+    description: "Machine learning engineers implementing agent memory systems"
+    pains: ["complex graph operations", "poor performance", "difficult debugging"]
+  - name: data_engineers
+    description: "Data engineers managing knowledge graph infrastructure"
+    pains: ["schema migration", "data integrity", "scalability"]
+narratives:
+  - capability: "immutable storage"
+    narrative: "provenance-rich, versioned knowledge that agents can trust"
+    audiences: [ai_researchers, ml_engineers]
+    formats: [technical_blog, api_docs, research_paper]
+  - capability: "vector search"
+    narrative: "efficient similarity search for semantic reasoning"
+    audiences: [ml_engineers, data_engineers]
+    formats: [demo_video, tutorial, benchmark]

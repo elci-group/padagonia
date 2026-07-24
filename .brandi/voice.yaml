@@ -1,0 +1,16 @@
+traits: [precise, technical, trustworthy]
+trait_signals:
+  precise: [exactly, deterministic, verify, validate]
+  technical: [implementation, storage format, serialization, index]
+  trustworthy: [provenance, integrity, immutability, correctness]
+style:
+  sentence_case_headings: true
+  max_exclamation_marks: 0
+  error_messages:
+    forbid_prefixes: ["Error", "ERROR", "Fatal", "panic"]
+    forbid_numeric_codes: true
+    require_actionable: true
+documentation:
+  code_blocks: true
+  examples: true
+  api_signatures: true

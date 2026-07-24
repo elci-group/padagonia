@@ -5,3 +5,8 @@
 *.csv
 !/bench/competitors/*.py
 bench/competitors/results.json
+# Ignore test fixtures directory, but allow golden fixtures
+tests/fixtures/
+!tests/fixtures/*.padagonia
+# Also allow .padagonia files to be committed despite *.pad pattern
+!*.padagonia

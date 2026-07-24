@@ -43,10 +43,21 @@ min_commit_interval = 10
 command = "cargo test"
 required = true
 
+[build]
+command = "cargo build --release"
+artifact_path = "target/release/padagonia"
+timeout_secs = 1200
+
 [ship]
 enabled = true
 require_qualification = true
 targets = ["x86_64-unknown-linux-gnu"]
+
+[ship.stable]
+channels = ["binaries"]
+push_tag = true
+release_notes = true
+require_qualification = true
 
 # [staging]
 # mode = "all"        # "all" (default), "cluster" (only changed files), or "pattern"

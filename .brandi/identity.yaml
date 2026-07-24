@@ -1,0 +1,21 @@
+product:
+  name: PADAGONIA
+  tagline: "Ontology-native, immutable, provenance-rich graph store for autonomous AI agents"
+  mission: "Provide AI agents with a trustworthy, versioned knowledge graph that preserves provenance and enables complex reasoning."
+  aliases: ["padagonia", "graph store", "knowledge graph"]
+  former_names: []
+archetype: [engineer, scientist, guardian]
+terminology:
+  canonical:
+    "graph store": "graph store"
+    "knowledge graph": "knowledge graph"
+    "provenance": "provenance"
+    "ontology": "ontology"
+    "node": "node"
+    "edge": "edge"
+    "vector search": "vector search"
+    "HNSW": "HNSW"
+  banned_variants:
+    "database": "database"
+    "blockchain": "blockchain"
+    "crypto": "crypto"

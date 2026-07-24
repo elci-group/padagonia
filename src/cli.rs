@@ -471,7 +471,7 @@ fn cmd_server(args: &[String]) {
     let settings = crate::app_config::Settings::load_from(config_path)
         .unwrap_or_else(|e| die(&format!("failed to load configuration: {e}")));
     crate::app_config::init_tracing(settings.log_level());
-    let _metrics_handle = crate::server::install_metrics_recorder()
+    let _metrics_handle = crate::metrics::install_metrics_recorder()
         .unwrap_or_else(|e| die(&format!("failed to install metrics recorder: {e}")));
 
     tracing::info!(
