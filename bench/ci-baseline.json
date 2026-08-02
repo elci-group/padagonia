@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "graph": {
+    "nodes": 10000,
+    "edges": 50000,
+    "seed": 42,
+    "max_bytes_per_item": 260.0
+  },
+  "vector": {
+    "vectors": 5000,
+    "dimensions": 64,
+    "k": 10,
+    "ef": 100,
+    "queries": 20,
+    "seed": 123,
+    "minimum_recall": 0.9
+  },
+  "policy": "Deterministic correctness, recall, and storage-density metrics are gated. Wall-clock results are reported as observations because shared CI runners are noisy."
+}

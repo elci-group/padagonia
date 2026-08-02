@@ -6,7 +6,8 @@ benchmarks, Docker packaging, and CI. The target is SOTA operational quality:
 correct storage evolution, explicit security posture, measurable performance,
 reproducible releases, and APIs that can be trusted by autonomous agent systems.
 
-Current state: **B- open-source prototype**.
+Current state: **B+ hardened single-node prototype**. The evidence and ranking
+behind this grade live in [docs/sota-assessment.md](docs/sota-assessment.md).
 
 ## Standards Bar
 
@@ -48,40 +49,40 @@ Goal: make data persistence dependable enough for production self-hosting.
 
 - [x] Define a public storage compatibility policy in README and release notes.
 - [ ] Introduce a migration layer keyed by storage version.
-- [ ] Add golden binary fixtures for each supported storage version.
+- [x] Add golden binary fixtures for each supported storage version.
 - [ ] Add property/fuzz tests for save/load, corrupted bytes, truncated files,
   large string tables, empty stores, and competing facts.
 - [ ] Replace whole-file reads on load with bounded streaming decode or document
   memory limits.
-- [ ] Add snapshot and restore CLI commands.
+- [x] Add snapshot and restore CLI commands.
 - [ ] Add a write-ahead log or equivalent durable mutation journal.
 
 ## Phase 2 - API And Operations (A- to A)
 
 Goal: make the server safe and predictable under real operational use.
 
-- [ ] Return structured error bodies for all HTTP failures.
-- [ ] Add OpenAPI output and examples for `/api/v1/*`.
-- [ ] Enforce request body size limits, timeout policy, and rate limiting.
-- [ ] Add integration tests for health, metrics, auth, stats, ingest, and
+- [x] Return structured error bodies for all HTTP failures.
+- [x] Add OpenAPI output and examples for `/api/v1/*`.
+- [x] Enforce request body size limits, timeout policy, and rate limiting.
+- [x] Add integration tests for health, metrics, auth, stats, ingest, and
   persistence reload behavior.
-- [ ] Persist server mutations to disk or clearly mark the server as ephemeral.
+- [x] Persist server mutations to disk or clearly mark the server as ephemeral.
 - [ ] Add graceful shutdown tests for in-flight requests.
-- [ ] Add Docker healthcheck and documented volume layout.
+- [x] Add Docker healthcheck and documented volume layout.
 
 ## Phase 3 - Security And Supply Chain (A to A+)
 
 Goal: pass a serious security review.
 
-- [ ] Add `cargo-deny` for license, duplicate, advisory, and yanked-crate policy.
+- [x] Add `cargo-deny` for license, duplicate, advisory, and yanked-crate policy.
 - [ ] Replace plain API-key strings with secret-bearing types once the design
   justifies the dependency.
 - [ ] Add scoped API keys and roles: admin, writer, reader.
-- [ ] Add audit logs for auth failures and mutations.
-- [ ] Add TLS guidance and a reverse-proxy deployment recipe.
-- [ ] Generate SBOMs for release artifacts.
-- [ ] Sign release artifacts and publish checksums.
-- [ ] Expand `SECURITY.md` with threat model, supported versions, and disclosure
+- [x] Add audit logs for auth failures and mutations.
+- [x] Add TLS guidance and a reverse-proxy deployment recipe.
+- [x] Generate SBOMs for release artifacts.
+- [x] Sign release artifacts and publish checksums.
+- [x] Expand `SECURITY.md` with threat model, supported versions, and disclosure
   workflow.
 
 ## Phase 4 - Performance Leadership (A+ to S)

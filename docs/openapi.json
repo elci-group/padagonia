@@ -1,0 +1,106 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "PADAGONIA HTTP API",
+    "version": "0.1",
+    "description": "Single-node ontology-aware graph API. Successful mutations are persisted before acknowledgment."
+  },
+  "servers": [{"url": "http://127.0.0.1:7373"}],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {"type": "http", "scheme": "bearer"}
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {"type": "string"},
+          "code": {"type": "string"},
+          "request_id": {"type": "string"}
+        }
+      },
+      "Id": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {"id": {"type": "integer", "minimum": 0}}
+      },
+      "Stats": {
+        "type": "object",
+        "required": ["nodes", "edges", "facts", "labels", "relations"],
+        "properties": {
+          "nodes": {"type": "integer", "minimum": 0},
+          "edges": {"type": "integer", "minimum": 0},
+          "facts": {"type": "integer", "minimum": 0},
+          "labels": {"type": "integer", "minimum": 0},
+          "relations": {"type": "integer", "minimum": 0}
+        }
+      },
+      "Provenance": {
+        "type": "object",
+        "required": ["agent", "model"],
+        "properties": {
+          "agent": {"type": "string", "minLength": 1},
+          "model": {"type": "string", "minLength": 1},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+          "cost": {"type": "number", "minimum": 0},
+          "evidence": {"type": "array", "items": {"type": "string"}}
+        }
+      },
+      "CreateNode": {
+        "type": "object",
+        "required": ["label"],
+        "properties": {
+          "label": {"type": "string", "minLength": 1},
+          "properties": {"type": "object", "additionalProperties": true},
+          "embedding": {"type": "array", "items": {"type": "number"}},
+          "provenance": {"$ref": "#/components/schemas/Provenance"}
+        }
+      },
+      "CreateEdge": {
+        "type": "object",
+        "required": ["src", "dst", "label"],
+        "properties": {
+          "src": {"type": "integer", "minimum": 0},
+          "dst": {"type": "integer", "minimum": 0},
+          "label": {"type": "string", "minLength": 1},
+          "properties": {"type": "object", "additionalProperties": true},
+          "embedding": {"type": "array", "items": {"type": "number"}},
+          "provenance": {"$ref": "#/components/schemas/Provenance"}
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {"description": "Invalid or over-limit input", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "Unauthorized": {"description": "Missing or invalid bearer credential", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "TooManyRequests": {"description": "Rate limit exceeded", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+    }
+  },
+  "paths": {
+    "/health": {"get": {"summary": "Liveness", "responses": {"200": {"description": "Process is alive"}}}},
+    "/ready": {"get": {"summary": "Readiness", "responses": {"200": {"description": "Store is ready"}}}},
+    "/metrics": {"get": {"summary": "Prometheus metrics", "responses": {"200": {"description": "Metrics text"}}}},
+    "/openapi.json": {"get": {"summary": "This API contract", "responses": {"200": {"description": "OpenAPI 3.1 document"}}}},
+    "/api/v1/stats": {
+      "get": {"security": [{"bearerAuth": []}], "responses": {"200": {"description": "Graph counts", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Stats"}}}}, "401": {"$ref": "#/components/responses/Unauthorized"}}}
+    },
+    "/api/v1/ingest": {
+      "post": {"security": [{"bearerAuth": []}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["nodes", "edges", "seed"], "properties": {"nodes": {"type": "integer", "minimum": 0}, "edges": {"type": "integer", "minimum": 0}, "seed": {"type": "integer", "minimum": 0}}}}}}, "responses": {"200": {"description": "Updated graph counts"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "429": {"$ref": "#/components/responses/TooManyRequests"}}}
+    },
+    "/api/v1/nodes": {
+      "post": {"security": [{"bearerAuth": []}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateNode"}}}}, "responses": {"201": {"description": "Node created", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Id"}}}}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}}}
+    },
+    "/api/v1/nodes/{id}": {
+      "get": {"security": [{"bearerAuth": []}], "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "integer", "minimum": 0}}], "responses": {"200": {"description": "Node"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "404": {"description": "Node not found"}}}
+    },
+    "/api/v1/edges": {
+      "post": {"security": [{"bearerAuth": []}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateEdge"}}}}, "responses": {"201": {"description": "Edge created"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}}}
+    },
+    "/api/v1/bfs": {
+      "post": {"security": [{"bearerAuth": []}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["start", "depth"], "properties": {"start": {"type": "integer", "minimum": 0}, "depth": {"type": "integer", "minimum": 0}, "relation": {"type": "string"}, "min_confidence": {"type": "number", "minimum": 0, "maximum": 1}}}}}}, "responses": {"200": {"description": "Reached nodes and depths"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}}}
+    },
+    "/api/v1/vector-search": {
+      "post": {"security": [{"bearerAuth": []}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["query"], "properties": {"query": {"type": "array", "minItems": 1, "items": {"type": "number"}}, "k": {"type": "integer", "minimum": 1}, "ef": {"type": "integer", "minimum": 1}, "label": {"type": "string"}, "metric": {"enum": ["euclidean", "cosine"]}}}}}}, "responses": {"200": {"description": "Nearest nodes and distances"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}}}
+    }
+  }
+}

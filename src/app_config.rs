@@ -12,6 +12,7 @@ pub struct Settings {
     pub storage: StorageConfig,
     pub logging: LoggingConfig,
     pub hnsw: HnswConfig,
+    pub limits: LimitsConfig,
 }
 
 impl Settings {
@@ -31,7 +32,11 @@ impl Settings {
                     .format(config::FileFormat::Toml)
                     .required(false),
             )
-            .add_source(Environment::with_prefix("PADAGONIA").separator("__"))
+            .add_source(
+                Environment::with_prefix("PADAGONIA")
+                    .prefix_separator("__")
+                    .separator("__"),
+            )
             .build()?
             .try_deserialize()
     }
@@ -83,6 +88,40 @@ impl Settings {
     /// Returns HNSW index parameters as `(m, ef_construction, ef)`.
     pub fn hnsw_params(&self) -> (usize, usize, usize) {
         (self.hnsw.m, self.hnsw.ef_construction, self.hnsw.ef)
+    }
+
+    /// Returns the operational limits applied by the HTTP server.
+    pub fn limits(&self) -> &LimitsConfig {
+        &self.limits
+    }
+
+    /// Validate security- and resource-sensitive settings before binding a socket.
+    pub fn validate(&self) -> Result<(), String> {
+        let api_key = self.api_key();
+        if api_key.len() < 16 || api_key.trim() != api_key {
+            return Err(
+                "server.api_key must contain at least 16 bytes with no surrounding whitespace"
+                    .to_string(),
+            );
+        }
+        let limits = &self.limits;
+        if limits.request_body_bytes == 0
+            || limits.request_timeout_seconds == 0
+            || limits.requests_per_second == 0
+            || limits.request_burst == 0
+            || limits.max_ingest_nodes == 0
+            || limits.max_ingest_edges == 0
+            || limits.max_bfs_depth == 0
+            || limits.max_vector_dimensions == 0
+            || limits.max_vector_results == 0
+            || limits.max_vector_ef == 0
+        {
+            return Err("all limits must be greater than zero".to_string());
+        }
+        if self.hnsw.m == 0 || self.hnsw.ef_construction == 0 || self.hnsw.ef == 0 {
+            return Err("all HNSW parameters must be greater than zero".to_string());
+        }
+        Ok(())
     }
 }
 
@@ -158,10 +197,62 @@ impl Default for HnswConfig {
     }
 }
 
+/// Resource-governance settings for untrusted HTTP requests.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct LimitsConfig {
+    pub request_body_bytes: usize,
+    pub request_timeout_seconds: u64,
+    pub requests_per_second: u32,
+    pub request_burst: u32,
+    pub max_ingest_nodes: usize,
+    pub max_ingest_edges: usize,
+    pub max_bfs_depth: usize,
+    pub max_vector_dimensions: usize,
+    pub max_vector_results: usize,
+    pub max_vector_ef: usize,
+}
+
+impl Default for LimitsConfig {
+    fn default() -> Self {
+        Self {
+            request_body_bytes: 1_048_576,
+            request_timeout_seconds: 30,
+            requests_per_second: 100,
+            request_burst: 200,
+            max_ingest_nodes: 100_000,
+            max_ingest_edges: 500_000,
+            max_bfs_depth: 64,
+            max_vector_dimensions: 4_096,
+            max_vector_results: 1_000,
+            max_vector_ef: 10_000,
+        }
+    }
+}
+
 /// Initialize the `tracing` subscriber using the configured log level, falling back to `RUST_LOG`.
 pub fn init_tracing(level: &str) {
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(level));
 
     tracing_subscriber::fmt().with_env_filter(filter).init();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn secure_defaults_require_an_explicit_api_key() {
+        let settings = Settings::default();
+        assert!(settings.validate().unwrap_err().contains("api_key"));
+    }
+
+    #[test]
+    fn zero_resource_limit_is_rejected() {
+        let mut settings = Settings::default();
+        settings.server.api_key = "a-secure-test-key".to_string();
+        settings.limits.max_bfs_depth = 0;
+        assert!(settings.validate().unwrap_err().contains("limits"));
+    }
 }

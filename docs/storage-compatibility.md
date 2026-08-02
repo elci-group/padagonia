@@ -20,6 +20,17 @@ Loads reject:
 - frames larger than the implementation limit,
 - CRC mismatches,
 - trailing bytes after the declared block count.
+- files above 8 GiB or headers declaring more than 1,000,000 blocks,
+- duplicate node/edge identifiers, non-finite scalar or embedding data,
+  inconsistent node embedding dimensions, invalid provenance ranges, and
+  dangling semantic references.
+
+Saves validate the same semantic invariants before touching the destination.
+They write and sync a same-directory temporary file, atomically replace the
+destination, and sync the parent directory on Unix. An unsuccessful encode or
+rename leaves the previous complete graph in place and cleans its temporary
+file. Platform filesystems must provide ordinary same-filesystem rename
+semantics; network filesystems require deployment-specific validation.
 
 ## Compatibility Policy
 

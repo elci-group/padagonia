@@ -14,6 +14,13 @@ A multi-stage `Dockerfile` is provided at the repository root. It builds the
 docker compose up -d
 ```
 
+Compose requires `PADAGONIA_API_KEY` and aborts if it is absent:
+
+```bash
+export PADAGONIA_API_KEY="$(openssl rand -hex 32)"
+docker compose up -d
+```
+
 This builds the image, mounts `padagonia.docker.toml` as the runtime
 configuration, and persists graph data in the `padagonia-data` Docker volume.
 
@@ -62,6 +69,13 @@ Key settings:
 | `hnsw`   | `m`            | HNSW maximum neighbor count                      |
 | `hnsw`   | `ef_construction`| HNSW construction search depth                 |
 | `hnsw`   | `ef`           | HNSW query search depth                          |
+| `limits` | `request_body_bytes` | Maximum decoded HTTP request body size      |
+| `limits` | `request_timeout_seconds` | End-to-end request timeout              |
+| `limits` | `requests_per_second` / `request_burst` | Process-wide API token bucket |
+| `limits` | `max_ingest_nodes` / `max_ingest_edges` | Synthetic ingest bounds       |
+| `limits` | `max_bfs_depth` | Maximum traversal depth                         |
+| `limits` | `max_vector_dimensions` | Maximum embedding/query dimensions        |
+| `limits` | `max_vector_results` / `max_vector_ef` | Vector-search effort bounds    |
 
 ### Environment variable overrides
 
@@ -70,7 +84,7 @@ prefix `PADAGONIA__` and double underscores for nesting:
 
 ```bash
 PADAGONIA__SERVER__LISTEN_ADDR=0.0.0.0:7373
-PADAGONIA__SERVER__API_KEY=<secure-random-key>
+PADAGONIA__SERVER__API_KEY=<at-least-16-random-bytes>
 PADAGONIA__LOGGING__LEVEL=debug
 ```
 
@@ -130,12 +144,75 @@ Protected API routes under `/api/v1` require a valid bearer token.
 
 If the header is missing, malformed, or invalid, the server returns `401 Unauthorized`.
 
+Authentication failures, accepted mutations, persistence outcomes, rejected
+rate limits, and shutdown outcomes emit structured tracing events. Bearer
+credentials and request payloads are never included. Every HTTP response carries
+an `x-request-id`; a valid caller-supplied identifier is preserved for cross-service
+correlation.
+
 ### Protected endpoints
 
 | Endpoint        | Method | Description                              |
 |-----------------|--------|------------------------------------------|
 | `/api/v1/stats` | GET    | Returns node/edge/fact/label/relation counts |
 | `/api/v1/ingest`| POST   | Generates a synthetic graph in memory      |
+
+The exact route and schema contract is available at public
+`GET /openapi.json` and checked in as [openapi.json](openapi.json).
+
+## Durability, snapshots, and restore
+
+Each successful mutation clones a consistent in-memory view and persists it off
+the async executor before acknowledging the request. Saves write a unique
+same-directory temporary file, flush and `fsync` it, atomically rename it over
+the destination, and sync the parent directory on Unix. A torn write therefore
+does not truncate the previous complete graph. This is single-file durability,
+not a multi-operation transaction, WAL, replication protocol, or rollback
+protection.
+
+Create a validated snapshot without replacing an existing file:
+
+```bash
+padagonia snapshot --in /var/lib/padagonia/data/store.pad \
+  --out /var/lib/padagonia/backups/store-$(date +%F).pad
+```
+
+Restore validates the snapshot before and after atomic replacement and requires
+explicit overwrite consent:
+
+```bash
+systemctl stop padagonia
+padagonia restore --in /var/lib/padagonia/backups/store-2026-07-31.pad \
+  --out /var/lib/padagonia/data/store.pad --force
+systemctl start padagonia
+curl --fail http://127.0.0.1:7373/ready
+```
+
+Copy snapshots to separate failure domains, record retention, and test restore
+regularly. Live-file deletion does not erase remote snapshots or logs.
+
+## TLS reverse proxy
+
+PADAGONIA intentionally does not terminate public TLS. Bind it to loopback and
+put a maintained reverse proxy in front. A minimal nginx location is:
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:7373;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Request-Id $request_id;
+    client_max_body_size 1m;
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 35s;
+    limit_req zone=padagonia burst=20 nodelay;
+}
+```
+
+Configure certificates, HSTS, connection limits, network allowlists, and a
+`limit_req_zone` according to the deployment environment. Keep the application
+limit enabled as defense in depth; its token bucket is currently process-wide,
+not per credential or source address.
 
 ## Security notes
 

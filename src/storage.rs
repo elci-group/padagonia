@@ -10,12 +10,19 @@ use crate::migration::MigrationManager;
 use crate::node::Node;
 use crate::ontology::{StringTable, StringTableExt};
 use crate::store::Store;
-use ahash::AHashMap;
+use ahash::{AHashMap, AHashSet};
 use rayon::prelude::*;
 use std::fmt;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{BufReader, BufWriter, Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static TEMP_FILE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+/// Hard upper bounds for a single storage file and its declared block count.
+pub const MAX_STORE_BYTES: u64 = 8 * 1024 * 1024 * 1024;
+pub const MAX_BLOCK_COUNT: u64 = 1_000_000;
 
 #[derive(Debug)]
 pub enum StoreError {
@@ -30,6 +37,11 @@ pub enum StoreError {
     UnknownStringId { id: u32 },
     DanglingEdge { edge_id: u64 },
     DanglingFact,
+    DuplicateNodeId { id: u64 },
+    DuplicateEdgeId { id: u64 },
+    TooManyBlocks { count: u64 },
+    StoreTooLarge { bytes: u64 },
+    InvalidValue { context: &'static str },
 }
 
 impl fmt::Display for StoreError {
@@ -52,6 +64,16 @@ impl fmt::Display for StoreError {
                 write!(f, "Dangling edge {} references missing node", edge_id)
             }
             StoreError::DanglingFact => write!(f, "Dangling fact references missing subject"),
+            StoreError::DuplicateNodeId { id } => write!(f, "Duplicate node id {id}"),
+            StoreError::DuplicateEdgeId { id } => write!(f, "Duplicate edge id {id}"),
+            StoreError::TooManyBlocks { count } => write!(
+                f,
+                "Declared block count {count} exceeds limit {MAX_BLOCK_COUNT}"
+            ),
+            StoreError::StoreTooLarge { bytes } => {
+                write!(f, "Store size {bytes} exceeds limit {MAX_STORE_BYTES}")
+            }
+            StoreError::InvalidValue { context } => write!(f, "Invalid value: {context}"),
         }
     }
 }
@@ -91,6 +113,7 @@ impl Store {
     /// Partition nodes by label and edges by relation, encode blocks in parallel, and write
     /// the file sequentially: header, then blocks.
     pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<()> {
+        validate_store(self)?;
         let mut node_partitions: AHashMap<LabelId, Vec<&Node>> = AHashMap::new();
         for node in self.nodes.values() {
             node_partitions.entry(node.label).or_default().push(node);
@@ -151,13 +174,30 @@ impl Store {
 
         let header = FileHeader::new(self.string_table.clone(), blocks.len() as u64);
 
-        let file = File::create(path)?;
+        let path = path.as_ref();
+        let (temporary_path, file) = create_atomic_temporary(path)?;
         let mut writer = BufWriter::new(file);
-        write_frame(&mut writer, &header)?;
-        for block in &blocks {
-            write_frame(&mut writer, block)?;
+        let write_result = (|| {
+            write_frame(&mut writer, &header)?;
+            for block in &blocks {
+                write_frame(&mut writer, block)?;
+            }
+            writer.flush()?;
+            writer.get_ref().sync_all()?;
+            Ok(())
+        })();
+        drop(writer);
+
+        if let Err(error) = write_result {
+            cleanup_temporary(&temporary_path);
+            return Err(error);
         }
-        writer.flush()?;
+
+        if let Err(error) = std::fs::rename(&temporary_path, path) {
+            cleanup_temporary(&temporary_path);
+            return Err(StoreError::Io(error));
+        }
+        sync_parent_directory(path)?;
         Ok(())
     }
 
@@ -173,6 +213,10 @@ impl Store {
 
     fn load_internal<P: AsRef<Path>>(path: P, parallel: bool) -> Result<Self> {
         let file = File::open(path)?;
+        let file_bytes = file.metadata()?.len();
+        if file_bytes > MAX_STORE_BYTES {
+            return Err(StoreError::StoreTooLarge { bytes: file_bytes });
+        }
         let mut reader = BufReader::new(file);
         let header: FileHeader = read_frame(&mut reader)?;
         if &header.magic != MAGIC {
@@ -187,6 +231,11 @@ impl Store {
 
         if header.version != VERSION {
             return Err(StoreError::BadHeader);
+        }
+        if header.block_count > MAX_BLOCK_COUNT {
+            return Err(StoreError::TooManyBlocks {
+                count: header.block_count,
+            });
         }
 
         // Continue with normal loading using the already-parsed header
@@ -309,14 +358,86 @@ impl Store {
             }
         }
 
+        validate_store(&store)?;
         Ok(store)
     }
+}
+
+fn cleanup_temporary(path: &Path) {
+    if let Err(error) = std::fs::remove_file(path) {
+        if error.kind() != std::io::ErrorKind::NotFound {
+            tracing::warn!(
+                event = "storage_temporary_cleanup_failed",
+                path = %path.display(),
+                error = %error,
+                "failed to clean storage temporary file"
+            );
+        }
+    }
+}
+
+/// Create a collision-resistant temporary file in the destination directory.
+/// Keeping both paths on the same filesystem makes the final rename atomic on
+/// supported platforms and prevents a failed write from truncating the last
+/// complete graph.
+fn create_atomic_temporary(destination: &Path) -> Result<(PathBuf, File)> {
+    let parent = destination
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let file_name = destination.file_name().ok_or_else(|| {
+        StoreError::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "storage destination must name a file",
+        ))
+    })?;
+
+    for _ in 0..128 {
+        let sequence = TEMP_FILE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+        let temporary_name = format!(
+            ".{}.tmp-{}-{sequence}",
+            file_name.to_string_lossy(),
+            std::process::id()
+        );
+        let temporary_path = parent.join(temporary_name);
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary_path)
+        {
+            Ok(file) => return Ok((temporary_path, file)),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(StoreError::Io(error)),
+        }
+    }
+
+    Err(StoreError::Io(std::io::Error::new(
+        std::io::ErrorKind::AlreadyExists,
+        "could not allocate a unique storage temporary file",
+    )))
+}
+
+#[cfg(unix)]
+fn sync_parent_directory(destination: &Path) -> Result<()> {
+    let parent = destination
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    File::open(parent)?.sync_all()?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn sync_parent_directory(_destination: &Path) -> Result<()> {
+    Ok(())
 }
 
 fn validate_decoded_blocks(
     decoded: &[(BlockKind, BlockPayload)],
     string_table: &StringTable,
 ) -> Result<()> {
+    let mut node_ids = AHashSet::new();
+    let mut edge_ids = AHashSet::new();
     for (kind, payload) in decoded {
         match (kind, payload) {
             (BlockKind::Nodes(kind_label), BlockPayload::Nodes { label, nodes })
@@ -324,6 +445,9 @@ fn validate_decoded_blocks(
             {
                 require_label(string_table, *label)?;
                 for node in nodes {
+                    if !node_ids.insert(node.id) {
+                        return Err(StoreError::DuplicateNodeId { id: node.id.0 });
+                    }
                     if node.label != *label {
                         return Err(StoreError::InconsistentBlockPayload);
                     }
@@ -336,6 +460,9 @@ fn validate_decoded_blocks(
             {
                 require_relation(string_table, *relation)?;
                 for edge in edges {
+                    if !edge_ids.insert(edge.id) {
+                        return Err(StoreError::DuplicateEdgeId { id: edge.id.0 });
+                    }
                     if edge.label != *relation {
                         return Err(StoreError::InconsistentBlockPayload);
                     }
@@ -345,6 +472,100 @@ fn validate_decoded_blocks(
             }
             (BlockKind::Facts, BlockPayload::Facts { .. }) => {}
             _ => return Err(StoreError::InconsistentBlockPayload),
+        }
+    }
+    Ok(())
+}
+
+fn validate_store(store: &Store) -> Result<()> {
+    let mut embedding_dimension = None;
+    for (id, node) in &store.nodes {
+        if *id != node.id {
+            return Err(StoreError::InvalidValue {
+                context: "node map key does not match node id",
+            });
+        }
+        require_label(&store.string_table, node.label)?;
+        require_keys(&store.string_table, &node.properties)?;
+        validate_properties(&node.properties)?;
+        validate_provenance(&node.provenance)?;
+        if let Some(embedding) = &node.embedding {
+            validate_embedding(embedding)?;
+            match embedding_dimension {
+                Some(expected) if expected != embedding.len() => {
+                    return Err(StoreError::InvalidValue {
+                        context: "node embeddings have inconsistent dimensions",
+                    });
+                }
+                None => embedding_dimension = Some(embedding.len()),
+                _ => {}
+            }
+        }
+    }
+    for (id, edge) in &store.edges {
+        if *id != edge.id {
+            return Err(StoreError::InvalidValue {
+                context: "edge map key does not match edge id",
+            });
+        }
+        if !store.nodes.contains_key(&edge.src) || !store.nodes.contains_key(&edge.dst) {
+            return Err(StoreError::DanglingEdge { edge_id: edge.id.0 });
+        }
+        require_relation(&store.string_table, edge.label)?;
+        require_keys(&store.string_table, &edge.properties)?;
+        validate_properties(&edge.properties)?;
+        validate_provenance(&edge.provenance)?;
+        if let Some(embedding) = &edge.embedding {
+            validate_embedding(embedding)?;
+        }
+    }
+    for (subject, facts) in &store.facts {
+        match subject {
+            FactSubject::Node(id) if !store.nodes.contains_key(id) => {
+                return Err(StoreError::DanglingFact);
+            }
+            FactSubject::Edge(id) if !store.edges.contains_key(id) => {
+                return Err(StoreError::DanglingFact);
+            }
+            _ => {}
+        }
+        for provenance in facts {
+            validate_provenance(provenance)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_embedding(embedding: &[f32]) -> Result<()> {
+    if embedding.is_empty() || embedding.iter().any(|value| !value.is_finite()) {
+        return Err(StoreError::InvalidValue {
+            context: "embedding must be non-empty and finite",
+        });
+    }
+    Ok(())
+}
+
+fn validate_provenance(provenance: &crate::Provenance) -> Result<()> {
+    if provenance.agent.trim().is_empty()
+        || provenance.model.trim().is_empty()
+        || !provenance.confidence.is_finite()
+        || !(0.0..=1.0).contains(&provenance.confidence)
+        || !provenance.cost.is_finite()
+        || provenance.cost < 0.0
+    {
+        return Err(StoreError::InvalidValue {
+            context: "provenance identity, confidence, or cost is invalid",
+        });
+    }
+    Ok(())
+}
+
+fn validate_properties(properties: &[(crate::id::KeyId, crate::Scalar)]) -> Result<()> {
+    for (_, value) in properties {
+        if matches!(value, crate::Scalar::F64(number) if !number.is_finite()) {
+            return Err(StoreError::InvalidValue {
+                context: "floating-point properties must be finite",
+            });
         }
     }
     Ok(())

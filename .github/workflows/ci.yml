@@ -5,34 +5,63 @@ on:
     branches: [main, master]
   pull_request:
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  check:
+  quality:
+    name: Rust quality gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+      - uses: actions/checkout@v6
+      - name: Install stable Rust components
+        run: rustup toolchain install stable --profile minimal --component rustfmt,clippy
       - run: cargo fmt --check
-      - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo test
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+      - name: Build rustdoc without warnings
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --locked --no-deps
 
-  audit:
+  msrv:
+    name: Minimum supported Rust 1.85
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Install cargo-audit
-        run: cargo install cargo-audit
-      - name: Run cargo audit
-        run: cargo audit
+      - uses: actions/checkout@v6
+      - run: rustup toolchain install 1.85.0 --profile minimal
+      - run: cargo +1.85.0 check --locked --all-targets
+
+  supply-chain:
+    name: Dependency policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install locked audit tools
+        run: cargo install --locked cargo-audit cargo-deny
+      - run: cargo audit
+      - run: cargo deny check
 
   docker:
+    name: Container build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Build Docker image
-        run: docker build -t padagonia .
+      - uses: actions/checkout@v6
+      - run: docker build --pull -t padagonia:${{ github.sha }} .
+
+  performance:
+    name: Deterministic performance invariants
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - run: cargo run --locked --release -- bench --nodes 10000 --edges 50000 --seed 42
+      - run: cargo run --locked --release -- bench-vectors --nodes 5000 --dim 64 --k 10 --ef 100 --m 16 --queries 20 --seed 123
+      - run: python3 scripts/check-benchmark.py bench/ci-baseline.json target/padagonia_bench_summary.json target/padagonia_hnsw_summary.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-${{ github.sha }}
+          path: target/padagonia_*_summary.json
+          if-no-files-found: error

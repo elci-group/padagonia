@@ -14,7 +14,12 @@ pub fn install_metrics_recorder(
     let handle = PrometheusBuilder::new()
         .add_global_label("service", "padagonia")
         .install_recorder()?;
-    let _ = METRICS_HANDLE.set(handle.clone());
+    if METRICS_HANDLE.set(handle.clone()).is_err() {
+        tracing::warn!(
+            event = "metrics_handle_already_initialized",
+            "global metrics handle was already installed"
+        );
+    }
     Ok(handle)
 }
 

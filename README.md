@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  A minimal Rust prototype of an ontology-native, immutable, provenance-rich graph store
+  A compact Rust graph store with ontology-aware vocabulary, append-only values, and explicit provenance
   designed for autonomous AI agents.
 </p>
 
@@ -25,12 +25,17 @@
 - Basic traversal, filtering, and BFS query APIs.
 - Native HNSW approximate nearest-neighbor search over embeddings.
 - JSON/JSONL/CSV projections.
+- Crash-safe atomic graph replacement plus validated snapshot and restore commands.
+- A persisted HTTP API with structured errors, correlation IDs, authentication,
+  request/operation limits, rate control, timeouts, metrics, and OpenAPI 3.1.
 - Deterministic synthetic benchmarks against NetworkX, SQLite, numpy, and hnswlib.
 
 ## Build & Test
 
 ```bash
 cargo test
+cargo clippy --all-targets -- -D warnings
+cargo deny check
 ```
 
 > **Kaptaind fallback:** The repo is configured for `kaptaind` auto-versioning
@@ -46,6 +51,10 @@ cargo run -- ingest --nodes 1000 --edges 5000 --seed 1 --out /tmp/test.pad
 
 # Load and report statistics
 cargo run -- load --in /tmp/test.pad
+
+# Create and verify a snapshot; restore only with explicit replacement consent
+cargo run -- snapshot --in /tmp/test.pad --out /tmp/backups/test.pad
+cargo run -- restore --in /tmp/backups/test.pad --out /tmp/test.pad --force
 
 # BFS from node 0 to depth 4, optionally filtering by relation
 cargo run -- bfs --in /tmp/test.pad --start 0 --depth 4
@@ -66,6 +75,11 @@ cargo run --release -- vector-search --in /tmp/test.pad --k 10 --ef 50
 # Start the HTTP server (see padagonia.toml.example for configuration)
 cargo run -- server --config padagonia.toml.example
 ```
+
+The server refuses short or blank credentials. Set the production key through
+`PADAGONIA__SERVER__API_KEY`. See the checked-in [OpenAPI contract](docs/openapi.json),
+[operations guide](docs/operations.md), [threat model](docs/threat-model.md), and
+[design principles](docs/design-principles.md).
 
 ## Benchmarks
 
@@ -114,6 +128,12 @@ src/
 - Each block stores its `BlockKind`, MessagePack-encoded payload, and a CRC32 checksum.
 - Save encodes blocks in parallel with `rayon`; load validates checksums and decodes blocks in parallel.
 - Storage compatibility rules are documented in [docs/storage-compatibility.md](docs/storage-compatibility.md).
+
+"Ontology-aware" means PADAGONIA interns and indexes a shared vocabulary. It
+does not yet claim ontology reasoning, cryptographic immutability, verified
+identity/provenance, adversarial tenant isolation, replication, or consensus.
+The exact maturity gaps and priorities are maintained in
+[docs/sota-assessment.md](docs/sota-assessment.md).
 
 ## Contributing
 

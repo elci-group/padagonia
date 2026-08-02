@@ -27,3 +27,17 @@ Please include:
 
 We aim to acknowledge reports within 5 business days and will keep you informed
 as we investigate and resolve the issue.
+
+## Security Model
+
+The supported single-node boundary, assets, actors, invariants, controls, and
+residual risks are documented in [docs/threat-model.md](docs/threat-model.md).
+PADAGONIA is not currently suitable for hostile multi-tenant deployment.
+
+Production deployments must terminate TLS at a trusted reverse proxy, inject a
+random bearer credential through `PADAGONIA__SERVER__API_KEY`, restrict graph
+and snapshot filesystem permissions, enforce host-level connection and disk
+quotas, collect structured logs remotely, and practice restore procedures.
+
+Release consumers should verify `SHA256SUMS` and the GitHub artifact attestation
+against the expected `elci-group/padagonia` repository before running a binary.

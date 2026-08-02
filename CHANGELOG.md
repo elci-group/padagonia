@@ -14,6 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Storage-format tests covering current version stamping, old-version rejection,
   and CRC mismatch failures.
 - Kimi swarm correctness strategy and storage compatibility policy docs.
+- Atomic, fsync-backed graph replacement with validated `snapshot` and
+  `restore` commands and failure-cleanup regression tests.
+- Centralized HTTP limits for bodies, timeouts, request rate/burst, ingest,
+  traversal depth, vector dimensions, result count, and search effort.
+- Request correlation IDs, structured authentication/mutation/persistence
+  events, a served OpenAPI 3.1 contract, threat model, design principles, and
+  evidence-backed SOTA assessment.
+- MSRV and rustdoc CI gates plus release checksums, CycloneDX SBOMs, GitHub
+  build-provenance attestations, and Linux ARM64 artifacts.
 
 ### Changed
 
@@ -31,6 +40,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   resolution, dangling edges, and semantic roundtrip indexes.
 - Changed BFS on a missing start node to return an empty result instead of
   reporting the nonexistent node as reached.
+- Replaced aspirational ontology/immutability language with precise implemented
+  guarantees and explicit non-goals.
+- Made Docker deployment fail closed unless an API key is injected through the
+  environment.
+- Removed production panic and silently discarded error paths from CLI,
+  metrics, storage cleanup, and shutdown handling.
 
 ### Removed
 

@@ -57,6 +57,14 @@ fn print_help() {
             "Generate a synthetic graph and save it to a PADAGONIA file",
         ),
         ("load", "Load a PADAGONIA file and print statistics"),
+        (
+            "snapshot",
+            "Validate and copy a graph into an atomic snapshot",
+        ),
+        (
+            "restore",
+            "Validate a snapshot and atomically restore a graph",
+        ),
         ("bfs", "Run a breadth-first search from a starting node"),
         ("to-json", "Export a PADAGONIA file to JSON"),
         (
@@ -103,6 +111,10 @@ fn print_help() {
     println!("    {DIM}# Start the HTTP server{RESET}");
     println!("    {CYAN}padagonia{RESET} server --config padagonia.toml");
     println!();
+    println!("    {DIM}# Snapshot and restore a graph{RESET}");
+    println!("    {CYAN}padagonia{RESET} snapshot --in graph.pad --out backups/graph.pad");
+    println!("    {CYAN}padagonia{RESET} restore --in backups/graph.pad --out graph.pad --force");
+    println!();
     println!("    {DIM}# Run the full benchmark suite{RESET}");
     println!("    {CYAN}padagonia{RESET} bench --nodes 100000 --edges 500000");
     println!("    {CYAN}padagonia{RESET} bench-vectors --nodes 50000 --dim 128 --k 10 --ef 200");
@@ -112,7 +124,11 @@ fn parse_flag<T: std::str::FromStr>(args: &[String], flag: &str) -> Option<T> {
     args.iter()
         .position(|a| a == flag)
         .and_then(|i| args.get(i + 1))
-        .and_then(|s| s.parse().ok())
+        .map(|value| {
+            value
+                .parse()
+                .unwrap_or_else(|_| die(&format!("{flag} has an invalid value '{value}'")))
+        })
 }
 
 fn parse_flag_str<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
@@ -120,6 +136,10 @@ fn parse_flag_str<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
         .position(|a| a == flag)
         .and_then(|i| args.get(i + 1))
         .map(|s| s.as_str())
+}
+
+fn has_flag(args: &[String], flag: &str) -> bool {
+    args.iter().any(|arg| arg == flag)
 }
 
 /// Print a clean error and exit non-zero instead of panicking on bad input.
@@ -156,6 +176,8 @@ pub fn run() {
     match cmd {
         "ingest" => cmd_ingest(rest),
         "load" => cmd_load(rest),
+        "snapshot" => cmd_snapshot(rest),
+        "restore" => cmd_restore(rest),
         "bfs" => cmd_bfs(rest),
         "to-json" => cmd_to_json(rest),
         "vector-search" => cmd_vector_search(rest),
@@ -168,6 +190,42 @@ pub fn run() {
             std::process::exit(1);
         }
     }
+}
+
+fn validated_copy(args: &[String], operation: &str) {
+    let source: &str = require(parse_flag_str(args, "--in"), "--in required");
+    let destination: &str = require(parse_flag_str(args, "--out"), "--out required");
+    if source == destination {
+        die("--in and --out must name different files");
+    }
+    if std::path::Path::new(destination).exists() && !has_flag(args, "--force") {
+        die("destination exists; pass --force to replace it atomically");
+    }
+    let store = Store::load(source)
+        .unwrap_or_else(|error| die(&format!("{operation} source validation failed: {error}")));
+    if let Some(parent) = std::path::Path::new(destination).parent() {
+        fs::create_dir_all(parent).unwrap_or_else(|error| {
+            die(&format!("failed to create destination directory: {error}"))
+        });
+    }
+    store
+        .save(destination)
+        .unwrap_or_else(|error| die(&format!("{operation} failed: {error}")));
+    let verified = Store::load(destination)
+        .unwrap_or_else(|error| die(&format!("{operation} verification failed: {error}")));
+    let (nodes, edges, facts, _, _) = verified.stats();
+    println!(
+        "{operation} complete: {} -> {} (nodes={}, edges={}, facts={})",
+        source, destination, nodes, edges, facts
+    );
+}
+
+fn cmd_snapshot(args: &[String]) {
+    validated_copy(args, "snapshot");
+}
+
+fn cmd_restore(args: &[String]) {
+    validated_copy(args, "restore");
 }
 
 fn cmd_ingest(args: &[String]) {
@@ -327,7 +385,11 @@ fn cmd_bench(args: &[String]) {
     let mut filter_times = Vec::with_capacity(runs);
 
     let tmp_pad = PathBuf::from("target/padagonia_bench.pad");
-    fs::create_dir_all("target").ok();
+    fs::create_dir_all("target").unwrap_or_else(|error| {
+        die(&format!(
+            "failed to create benchmark output directory: {error}"
+        ))
+    });
 
     // Generate once.
     let mut base_store = Store::new();
@@ -341,15 +403,20 @@ fn cmd_bench(args: &[String]) {
         ingest_times.push(t0.elapsed().as_secs_f64());
 
         let t1 = Instant::now();
-        store.save(&tmp_pad).unwrap();
+        store
+            .save(&tmp_pad)
+            .unwrap_or_else(|error| die(&format!("benchmark save failed: {error}")));
         save_times.push(t1.elapsed().as_secs_f64());
 
         let t2 = Instant::now();
-        let loaded = Store::load(&tmp_pad).unwrap();
+        let loaded = Store::load(&tmp_pad)
+            .unwrap_or_else(|error| die(&format!("benchmark load failed: {error}")));
         load_times.push(t2.elapsed().as_secs_f64());
 
         let t3 = Instant::now();
-        let _loaded_seq = Store::load_seq(&tmp_pad).unwrap();
+        let loaded_seq = Store::load_seq(&tmp_pad)
+            .unwrap_or_else(|error| die(&format!("sequential benchmark load failed: {error}")));
+        std::hint::black_box(&loaded_seq);
         load_seq_times.push(t3.elapsed().as_secs_f64());
 
         let engine = QueryEngine::new(&loaded);
@@ -360,19 +427,19 @@ fn cmd_bench(args: &[String]) {
             .copied()
             .unwrap_or(crate::NodeId(0));
         let t4 = Instant::now();
-        let _ = engine.bfs(start, 4, None, None);
+        std::hint::black_box(engine.bfs(start, 4, None, None));
         bfs_times.push(t4.elapsed().as_secs_f64());
 
         let works_for = loaded.string_table.relation_id("works_for");
         let t5 = Instant::now();
         if let Some(works_for) = works_for {
-            let _ = engine.by_relation(works_for);
+            std::hint::black_box(engine.by_relation(works_for));
         }
         filter_times.push(t5.elapsed().as_secs_f64());
     }
 
     let median = |v: &mut [f64]| -> f64 {
-        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        v.sort_by(f64::total_cmp);
         v[v.len() / 2]
     };
 
@@ -394,8 +461,11 @@ fn cmd_bench(args: &[String]) {
     });
 
     let out = PathBuf::from("target/padagonia_bench_summary.json");
-    fs::write(&out, serde_json::to_string_pretty(&summary).unwrap()).unwrap();
-    println!("{}", serde_json::to_string_pretty(&summary).unwrap());
+    let summary_text = serde_json::to_string_pretty(&summary)
+        .unwrap_or_else(|error| die(&format!("benchmark summary encoding failed: {error}")));
+    fs::write(&out, &summary_text)
+        .unwrap_or_else(|error| die(&format!("benchmark summary write failed: {error}")));
+    println!("{summary_text}");
     println!("wrote {}", out.display());
 }
 
@@ -460,9 +530,16 @@ fn cmd_bench_vectors(args: &[String]) {
     });
 
     let out = PathBuf::from("target/padagonia_hnsw_summary.json");
-    fs::create_dir_all("target").ok();
-    fs::write(&out, serde_json::to_string_pretty(&summary).unwrap()).unwrap();
-    println!("{}", serde_json::to_string_pretty(&summary).unwrap());
+    fs::create_dir_all("target").unwrap_or_else(|error| {
+        die(&format!(
+            "failed to create benchmark output directory: {error}"
+        ))
+    });
+    let summary_text = serde_json::to_string_pretty(&summary)
+        .unwrap_or_else(|error| die(&format!("vector summary encoding failed: {error}")));
+    fs::write(&out, &summary_text)
+        .unwrap_or_else(|error| die(&format!("vector summary write failed: {error}")));
+    println!("{summary_text}");
     println!("wrote {}", out.display());
 }
 

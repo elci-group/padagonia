@@ -1,3 +1,4 @@
+mod api;
 pub mod auth;
 pub mod bench_support;
 pub mod block;
@@ -21,6 +22,8 @@ pub mod value;
 pub mod app_config;
 pub mod cli;
 pub mod server;
+mod server_middleware;
+mod server_state;
 pub mod storage;
 
 pub use block::{Block, BlockKind, BlockPayload, FileHeader, MAGIC, VERSION};
@@ -35,6 +38,6 @@ pub use ontology::{StringTable, StringTableExt};
 pub use projection::Projection;
 pub use provenance::Provenance;
 pub use query::QueryEngine;
-pub use storage::StoreError;
+pub use storage::{StoreError, MAX_BLOCK_COUNT, MAX_STORE_BYTES};
 pub use store::Store;
 pub use value::Scalar;

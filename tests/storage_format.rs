@@ -2,7 +2,10 @@ use padagonia::bench_support::generate_powerlaw;
 use padagonia::id::{LabelId, NodeId};
 use padagonia::storage::StoreError;
 use padagonia::store::Store;
-use padagonia::{compute_checksum, Block, BlockKind, BlockPayload, FileHeader, MAX_FRAME_BYTES};
+use padagonia::{
+    compute_checksum, Block, BlockKind, BlockPayload, FileHeader, StringTable, MAX_BLOCK_COUNT,
+    MAX_FRAME_BYTES,
+};
 use std::fs;
 
 #[test]
@@ -38,6 +41,18 @@ fn old_storage_version_is_rejected() {
     assert!(matches!(
         Store::load(tmp.path()),
         Err(StoreError::BadHeader)
+    ));
+}
+
+#[test]
+fn excessive_declared_block_count_is_rejected_before_allocation() {
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    let header = FileHeader::new(StringTable::new(), MAX_BLOCK_COUNT + 1);
+    fs::write(tmp.path(), encode_frame(&header)).unwrap();
+
+    assert!(matches!(
+        Store::load(tmp.path()),
+        Err(StoreError::TooManyBlocks { count }) if count == MAX_BLOCK_COUNT + 1
     ));
 }
 

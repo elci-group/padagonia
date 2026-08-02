@@ -2,11 +2,12 @@
 # Copy this file to `padagonia.toml` and adjust values as needed.
 # Settings can also be overridden via environment variables using the
 # prefix `PADAGONIA_` and double underscores for nested keys, e.g.:
-#   PADAGONIA_SERVER__LISTEN_ADDR=127.0.0.1:8080
+#   PADAGONIA__SERVER__LISTEN_ADDR=127.0.0.1:8080
 
 [server]
 listen_addr = "127.0.0.1:8080"
-api_key = "padagonia-secret"
+# Set this through PADAGONIA__SERVER__API_KEY in production.
+api_key = "replace-with-at-least-16-random-bytes"
 data_dir = "data/store.pad"
 
 [storage]
@@ -20,3 +21,15 @@ level = "info"
 m = 16
 ef_construction = 200
 ef = 50
+
+[limits]
+request_body_bytes = 1048576
+request_timeout_seconds = 30
+requests_per_second = 100
+request_burst = 200
+max_ingest_nodes = 100000
+max_ingest_edges = 500000
+max_bfs_depth = 64
+max_vector_dimensions = 4096
+max_vector_results = 1000
+max_vector_ef = 10000

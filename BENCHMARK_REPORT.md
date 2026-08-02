@@ -1,48 +1,45 @@
 # PADAGONIA Benchmark Report
 
-## Workload
-- Nodes: 100000
-- Edges: 500000
-- Facts: 600000
-- Labels: 3
-- Relations: 4
-- PADAGONIA file size: 124,989,561 bytes
+## Method
 
-## PADAGONIA Results
+The CI workload is deterministic and versioned in `bench/ci-baseline.json`.
+Storage density and HNSW recall are enforced because they are stable semantic
+metrics. Wall-clock throughput and latency are recorded as observations but are
+not pass/fail gates on shared runners.
 
-| Metric | Value |
-|---|---|
-| Ingest | 506.1 ms (1.19 M items/s) |
-| Save | 8.002 s |
-| Load (parallel) | 1.217 s (493.04 K items/s) |
-| Load (sequential) | 1.752 s |
-| BFS depth 4 | 53.9 ms |
-| Filter by relation | 5.2 ms |
+Reproduce the gate:
 
-## Competitor Results
+```bash
+cargo run --locked --release -- bench --nodes 10000 --edges 50000 --seed 42
+cargo run --locked --release -- bench-vectors --nodes 5000 --dim 64 --k 10 --ef 100 --m 16 --queries 20 --seed 123
+python3 scripts/check-benchmark.py bench/ci-baseline.json \
+  target/padagonia_bench_summary.json target/padagonia_hnsw_summary.json
+```
 
-| Competitor | Ingest | Ingest Throughput | BFS depth 4 |
-|---|---|---|---|
-| networkx | 730.5 ms | 821.38 K items/s | 2.1 ms |
-| sqlite | 1.821 s | 329.55 K items/s | 578.5 ms |
+## Reference observation (2026-07-31)
 
-## Vector Search
+- CPU: Intel Core 5 120U, 10 cores / 12 threads, 12 MiB L3
+- OS: Linux 6.18.7 x86-64
+- Compiler: rustc 1.96.1, optimized release profile
+- Graph: 10,000 nodes, 50,000 edges, seed 42
+- Storage: 12,584,465 bytes, 209.74 bytes per node/edge
+- Ingest: 2.03 million node/edge items per second
+- Load: 536 thousand node/edge items per second
+- BFS depth 4: 2.33 ms median across five runs
+- Vector: 5,000 vectors, 64 dimensions, `k=10`, `ef=100`, 20 queries
+- HNSW recall@10: 0.975 against brute force
+- HNSW search: 0.101 ms/query average
+- Brute-force search: 0.277 ms/query average
 
-Workload: 50000 vectors × 128 dims, k=10, ef=200
+Power state, background load, allocator, kernel, and compiler affect timings;
+these figures are not universal performance claims. The checked-in competitor
+harness remains useful for comparative experiments, but a published comparison
+must record dependency versions, identical workload input, hardware, warm-up,
+run distribution, and uncertainty.
 
-| Competitor | Build | Search/query | Recall@k |
-|---|---|---|---|
-| PADAGONIA HNSW | 19.517 s | 1.0 ms | 0.812 |
-| numpy_brute_force | 0.0 ms | 12.7 ms | 1.000 |
-| hnswlib | 7.675 s | 0.6 ms | 0.852 |
+## Gate thresholds
 
-## Observations
-
-- **Ingest**: networkx is 1.44x PADAGONIA ingest time.
-- **BFS**: networkx is 0.04x PADAGONIA BFS time.
-- **Ingest**: sqlite is 3.60x PADAGONIA ingest time.
-- **BFS**: sqlite is 10.72x PADAGONIA BFS time.
-
-### Vector search notes
-- **numpy_brute_force** query latency is 12.24x PADAGONIA HNSW query latency.
-- **hnswlib** query latency is 0.53x PADAGONIA HNSW query latency.
+- workload shape must exactly match the versioned baseline;
+- serialized storage must stay at or below 260 bytes per node/edge item;
+- HNSW recall@10 must remain at or above 0.90;
+- all machine-readable summaries are retained as CI artifacts.

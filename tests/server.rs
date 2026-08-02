@@ -2,6 +2,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use axum::Router;
 use metrics_exporter_prometheus::PrometheusBuilder;
+use padagonia::app_config::LimitsConfig;
 use padagonia::ontology::StringTableExt;
 use padagonia::server::{router, AppState};
 use padagonia::store::Store;
@@ -11,14 +12,19 @@ use tower::ServiceExt;
 const KEY: &str = "test-secret";
 
 fn test_app() -> (Router, tempfile::TempDir) {
+    test_app_with_limits(LimitsConfig::default())
+}
+
+fn test_app_with_limits(limits: LimitsConfig) -> (Router, tempfile::TempDir) {
     let dir = tempfile::tempdir().unwrap();
     let handle = PrometheusBuilder::new().build_recorder().handle();
-    let state = AppState::new(
+    let state = AppState::new_with_limits(
         Store::new(),
         handle,
         KEY,
         dir.path().join("store.pad"),
         (16, 64, 50),
+        limits,
     );
     (router(state, "/metrics"), dir)
 }
@@ -210,7 +216,7 @@ async fn bfs_endpoint_traverses_created_edges() {
     assert!(entries.iter().any(|e| e["node_id"] == 1 && e["depth"] == 1));
 
     // A confidence threshold above the default edge confidence prunes the edge.
-    let (_, body) = request(
+    let (status, body) = request(
         &app,
         "POST",
         "/api/v1/bfs",
@@ -218,7 +224,8 @@ async fn bfs_endpoint_traverses_created_edges() {
         Some(json!({"start": 0, "depth": 2, "min_confidence": 1.5})),
     )
     .await;
-    assert_eq!(body.as_array().unwrap().len(), 1);
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap().contains("min_confidence"));
 
     // Unknown relation names are rejected, not panicked on.
     let (status, _) = request(
@@ -230,6 +237,90 @@ async fn bfs_endpoint_traverses_created_edges() {
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn openapi_and_request_ids_are_exposed() {
+    let (app, _dir) = test_app();
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/openapi.json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(response.headers().contains_key("x-request-id"));
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let document: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(document["openapi"], "3.1.0");
+}
+
+#[tokio::test]
+async fn operation_limits_return_structured_errors() {
+    let limits = LimitsConfig {
+        max_ingest_nodes: 2,
+        max_ingest_edges: 3,
+        max_bfs_depth: 1,
+        max_vector_dimensions: 2,
+        max_vector_results: 1,
+        max_vector_ef: 2,
+        ..LimitsConfig::default()
+    };
+    let (app, _dir) = test_app_with_limits(limits);
+
+    let cases = [
+        ("/api/v1/ingest", json!({"nodes": 3, "edges": 0, "seed": 1})),
+        ("/api/v1/bfs", json!({"start": 0, "depth": 2})),
+        ("/api/v1/vector-search", json!({"query": [0.0, 1.0, 2.0]})),
+    ];
+    for (uri, body) in cases {
+        let (status, body) = request(&app, "POST", uri, Some(KEY), Some(body)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{uri}");
+        assert!(body["error"].is_string(), "{uri}: {body}");
+    }
+}
+
+#[tokio::test]
+async fn request_body_and_rate_limits_fail_closed() {
+    let body_limits = LimitsConfig {
+        request_body_bytes: 32,
+        ..LimitsConfig::default()
+    };
+    let (app, _dir) = test_app_with_limits(body_limits);
+    let (status, body) = request(
+        &app,
+        "POST",
+        "/api/v1/nodes",
+        Some(KEY),
+        Some(json!({"label": "a label deliberately larger than the configured body"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+    assert!(body["error"].is_string());
+
+    let rate_limits = LimitsConfig {
+        requests_per_second: 0,
+        request_burst: 2,
+        ..LimitsConfig::default()
+    };
+    let (app, _dir) = test_app_with_limits(rate_limits);
+    for expected in [
+        StatusCode::OK,
+        StatusCode::OK,
+        StatusCode::TOO_MANY_REQUESTS,
+    ] {
+        let (status, body) = request(&app, "GET", "/api/v1/stats", Some(KEY), None).await;
+        assert_eq!(status, expected);
+        if expected == StatusCode::TOO_MANY_REQUESTS {
+            assert!(body["error"].is_string());
+        }
+    }
 }
 
 #[tokio::test]

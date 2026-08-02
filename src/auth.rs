@@ -12,16 +12,39 @@ pub async fn auth_middleware(
     next: Next,
 ) -> Result<Response, StatusCode> {
     let expected = format!("Bearer {}", api_key);
-    let auth_header = request
-        .headers()
-        .get("authorization")
-        .and_then(|h| h.to_str().ok());
+    let auth_header = request.headers().get("authorization");
 
     match auth_header {
-        Some(header) if constant_time_eq(header.as_bytes(), expected.as_bytes()) => {
-            Ok(next.run(request).await)
+        Some(value) => match value.to_str() {
+            Ok(header) if constant_time_eq(header.as_bytes(), expected.as_bytes()) => {
+                Ok(next.run(request).await)
+            }
+            Ok(_) => {
+                tracing::warn!(
+                    event = "authentication_failed",
+                    reason = "credential_mismatch",
+                    "protected request rejected"
+                );
+                Err(StatusCode::UNAUTHORIZED)
+            }
+            Err(error) => {
+                tracing::warn!(
+                    event = "authentication_failed",
+                    reason = "invalid_header_encoding",
+                    error = %error,
+                    "protected request rejected"
+                );
+                Err(StatusCode::UNAUTHORIZED)
+            }
+        },
+        None => {
+            tracing::warn!(
+                event = "authentication_failed",
+                reason = "missing_authorization_header",
+                "protected request rejected"
+            );
+            Err(StatusCode::UNAUTHORIZED)
         }
-        _ => Err(StatusCode::UNAUTHORIZED),
     }
 }
 

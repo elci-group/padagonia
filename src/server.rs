@@ -1,6 +1,7 @@
 //! HTTP server for PADAGONIA: REST API, health checks, auth, metrics,
 //! write-through persistence, and graceful shutdown.
 
+use crate::api::*;
 use crate::app_config::Settings;
 use crate::auth::auth_middleware;
 use crate::bench_support::generate_powerlaw;
@@ -10,213 +11,26 @@ use crate::id::NodeId;
 use crate::metrics::get_metrics_handle;
 use crate::ontology::StringTableExt;
 use crate::projection::props_to_json;
-use crate::provenance::Provenance;
 use crate::query::QueryEngine;
+use crate::server_middleware::{normalize_error_responses, rate_limit_middleware, request_context};
 use crate::store::Store;
-use crate::value::Scalar;
 use axum::{
-    extract::{Path, State},
-    http::StatusCode,
+    extract::{DefaultBodyLimit, Path, State},
+    http::{header, StatusCode},
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
 };
-use metrics_exporter_prometheus::PrometheusHandle;
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::path::{Path as FsPath, PathBuf};
-use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tokio::sync::RwLock;
+use std::path::Path as FsPath;
+use std::time::Duration;
 use tower_http::{timeout::TimeoutLayer, trace::TraceLayer};
 
-/// Shared state behind the HTTP API.
-#[derive(Clone)]
-pub struct AppState {
-    store: Arc<RwLock<Store>>,
-    metrics_handle: PrometheusHandle,
-    api_key: Arc<str>,
-    data_path: Arc<PathBuf>,
-    /// HNSW parameters `(m, ef_construction, ef)` from configuration.
-    hnsw: (usize, usize, usize),
-}
-
-impl AppState {
-    pub fn new(
-        store: Store,
-        metrics_handle: PrometheusHandle,
-        api_key: impl Into<String>,
-        data_path: PathBuf,
-        hnsw: (usize, usize, usize),
-    ) -> Self {
-        Self {
-            store: Arc::new(RwLock::new(store)),
-            metrics_handle,
-            api_key: Arc::from(api_key.into().into_boxed_str()),
-            data_path: Arc::new(data_path),
-            hnsw,
-        }
-    }
-}
-
-/// JSON response body for `/api/v1/stats` and `/api/v1/ingest`.
-#[derive(Serialize)]
-struct StatsResponse {
-    nodes: usize,
-    edges: usize,
-    facts: usize,
-    labels: usize,
-    relations: usize,
-}
-
-/// JSON response body for the node/edge creation endpoints.
-#[derive(Serialize)]
-struct IdResponse {
-    id: u64,
-}
-
-/// Request body for `/api/v1/ingest` (synthetic workload generator).
-#[derive(Deserialize)]
-struct IngestRequest {
-    nodes: usize,
-    edges: usize,
-    seed: u64,
-}
-
-/// Provenance supplied by the caller; server-side defaults fill the gaps.
-#[derive(Deserialize)]
-struct ProvenanceInput {
-    agent: String,
-    model: String,
-    confidence: Option<f32>,
-    cost: Option<f32>,
-    evidence: Option<Vec<String>>,
-}
-
-impl ProvenanceInput {
-    fn into_provenance(self) -> Provenance {
-        Provenance {
-            agent: self.agent,
-            model: self.model,
-            confidence: self.confidence.unwrap_or(1.0),
-            cost: self.cost.unwrap_or(0.0),
-            timestamp: now_unix(),
-            evidence: self.evidence.unwrap_or_default(),
-        }
-    }
-}
-
-fn default_provenance() -> Provenance {
-    Provenance {
-        agent: "http-api".to_string(),
-        model: "unknown".to_string(),
-        confidence: 1.0,
-        cost: 0.0,
-        timestamp: now_unix(),
-        evidence: Vec::new(),
-    }
-}
-
-fn now_unix() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
-}
-
-/// Convert a JSON property value to a `Scalar`. Arrays and objects have no
-/// scalar counterpart, so they are stored as their JSON text representation.
-fn json_to_scalar(value: serde_json::Value) -> Scalar {
-    match value {
-        serde_json::Value::Null => Scalar::Null,
-        serde_json::Value::Bool(b) => Scalar::Bool(b),
-        serde_json::Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                Scalar::I64(i)
-            } else {
-                Scalar::F64(n.as_f64().unwrap_or(0.0))
-            }
-        }
-        serde_json::Value::String(s) => Scalar::String(s),
-        other => Scalar::String(other.to_string()),
-    }
-}
-
-fn json_props(properties: &HashMap<String, serde_json::Value>) -> Vec<(&str, Scalar)> {
-    properties
-        .iter()
-        .map(|(k, v)| (k.as_str(), json_to_scalar(v.clone())))
-        .collect()
-}
-
-/// Request body for `POST /api/v1/nodes`.
-#[derive(Deserialize)]
-struct CreateNodeRequest {
-    label: String,
-    #[serde(default)]
-    properties: HashMap<String, serde_json::Value>,
-    embedding: Option<Vec<f32>>,
-    provenance: Option<ProvenanceInput>,
-}
-
-/// Request body for `POST /api/v1/edges`.
-#[derive(Deserialize)]
-struct CreateEdgeRequest {
-    src: u64,
-    dst: u64,
-    label: String,
-    #[serde(default)]
-    properties: HashMap<String, serde_json::Value>,
-    embedding: Option<Vec<f32>>,
-    provenance: Option<ProvenanceInput>,
-}
-
-/// Request body for `POST /api/v1/bfs`.
-#[derive(Deserialize)]
-struct BfsRequest {
-    start: u64,
-    depth: usize,
-    relation: Option<String>,
-    min_confidence: Option<f32>,
-}
-
-/// One entry of the `/api/v1/bfs` response.
-#[derive(Serialize)]
-struct BfsEntry {
-    node_id: u64,
-    depth: usize,
-}
-
-/// Request body for `POST /api/v1/vector-search`.
-#[derive(Deserialize)]
-struct VectorSearchRequest {
-    query: Vec<f32>,
-    k: Option<usize>,
-    ef: Option<usize>,
-    label: Option<String>,
-    metric: Option<String>,
-}
-
-/// One entry of the `/api/v1/vector-search` response.
-#[derive(Serialize)]
-struct VectorHit {
-    node_id: u64,
-    distance: f32,
-}
-
-/// JSON response body for `GET /api/v1/nodes/:id`.
-#[derive(Serialize)]
-struct NodeResponse {
-    id: u64,
-    label: String,
-    properties: serde_json::Value,
-    embedding: Option<Vec<f32>>,
-    provenance: Provenance,
-}
+pub use crate::server_state::AppState;
 
 /// Build the HTTP router. Kept separate from `serve()` so integration tests
 /// can exercise the API without binding a socket.
 pub fn router(state: AppState, metrics_path: &str) -> Router {
+    let limits = state.limits.clone();
     let public_routes = Router::new()
         .route("/health", get(health_handler))
         .route("/ready", get(ready_handler))
@@ -233,16 +47,24 @@ pub fn router(state: AppState, metrics_path: &str) -> Router {
         .route_layer(axum::middleware::from_fn_with_state(
             state.api_key.clone(),
             auth_middleware,
+        ))
+        .route_layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            rate_limit_middleware,
         ));
 
     Router::new()
         .merge(public_routes)
         .nest("/api/v1", api_routes)
+        .route("/openapi.json", get(openapi_handler))
+        .layer(DefaultBodyLimit::max(limits.request_body_bytes))
         .layer(TimeoutLayer::with_status_code(
             StatusCode::REQUEST_TIMEOUT,
-            Duration::from_secs(30),
+            Duration::from_secs(limits.request_timeout_seconds),
         ))
         .layer(TraceLayer::new_for_http())
+        .layer(axum::middleware::from_fn(normalize_error_responses))
+        .layer(axum::middleware::from_fn(request_context))
         .with_state(state)
 }
 
@@ -252,23 +74,21 @@ pub fn router(state: AppState, metrics_path: &str) -> Router {
 /// `settings.listen_addr()`, loads an existing store from `settings.data_dir()`
 /// if one exists, and saves the store on graceful shutdown (SIGTERM/Ctrl-C).
 pub async fn serve(settings: Settings) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    if settings.api_key().is_empty() {
-        return Err(
-            "server.api_key must not be empty: protected routes would accept a blank bearer token"
-                .into(),
-        );
-    }
+    settings
+        .validate()
+        .map_err(|error| format!("invalid configuration: {error}"))?;
     let metrics_handle = get_metrics_handle()
         .ok_or("metrics recorder not installed; call install_metrics_recorder() first")?;
 
     let data_path = settings.data_dir();
     let store = load_store(&data_path).await?;
-    let state = AppState::new(
+    let state = AppState::new_with_limits(
         store,
         metrics_handle,
         settings.api_key().to_string(),
         data_path.clone(),
         settings.hnsw_params(),
+        settings.limits().clone(),
     );
     let app = router(state.clone(), settings.metrics_path());
 
@@ -285,15 +105,40 @@ pub async fn serve(settings: Settings) -> Result<(), Box<dyn std::error::Error +
 
     // Best-effort final save so writes made while the server ran survive restarts.
     let snapshot = state.store.read().await.clone();
-    let path = data_path;
+    let path = data_path.clone();
     match tokio::task::spawn_blocking(move || save_store_to(&snapshot, &path)).await {
-        Ok(Ok(())) => tracing::info!("store saved on shutdown"),
-        Ok(Err(e)) => tracing::warn!("failed to save store on shutdown: {e}"),
-        Err(e) => tracing::warn!("shutdown save task failed: {e}"),
+        Ok(Ok(())) => tracing::info!(
+            event = "shutdown_store_saved",
+            data_path = %data_path.display(),
+            "store saved on shutdown"
+        ),
+        Ok(Err(error)) => tracing::warn!(
+            event = "shutdown_store_save_failed",
+            data_path = %data_path.display(),
+            error = %error,
+            "failed to save store on shutdown"
+        ),
+        Err(error) => tracing::warn!(
+            event = "shutdown_store_task_failed",
+            data_path = %data_path.display(),
+            error = %error,
+            "shutdown save task failed"
+        ),
     }
 
-    tracing::info!("PADAGONIA HTTP server shutting down");
+    tracing::info!(
+        event = "server_shutdown_complete",
+        data_path = %data_path.display(),
+        "PADAGONIA HTTP server shutting down"
+    );
     Ok(())
+}
+
+async fn openapi_handler() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "application/json")],
+        include_str!("../docs/openapi.json"),
+    )
 }
 
 async fn load_store<P: AsRef<FsPath>>(
@@ -327,8 +172,14 @@ async fn persist(state: &AppState) -> ApiResult<()> {
             metrics::counter!("padagonia_persist_total").increment(1);
             Ok(())
         }
-        Ok(Err(e)) => Err(internal_error(format!("failed to persist store: {e}"))),
-        Err(e) => Err(internal_error(format!("persist task failed: {e}"))),
+        Ok(Err(error)) => {
+            tracing::error!(event = "persist_failed", error = %error, "store persistence failed");
+            Err(internal_error(format!("failed to persist store: {error}")))
+        }
+        Err(error) => {
+            tracing::error!(event = "persist_task_failed", error = %error, "store persistence task failed");
+            Err(internal_error(format!("persist task failed: {error}")))
+        }
     }
 }
 
@@ -364,12 +215,34 @@ async fn ingest_handler(
     State(state): State<AppState>,
     Json(req): Json<IngestRequest>,
 ) -> ApiResult<Json<StatsResponse>> {
+    if req.nodes > state.limits.max_ingest_nodes {
+        return Err(bad_request(format!(
+            "nodes exceeds configured limit {}",
+            state.limits.max_ingest_nodes
+        )));
+    }
+    if req.edges > state.limits.max_ingest_edges {
+        return Err(bad_request(format!(
+            "edges exceeds configured limit {}",
+            state.limits.max_ingest_edges
+        )));
+    }
+    if req.nodes == 0 && req.edges != 0 {
+        return Err(bad_request("edges require at least one node"));
+    }
     let (nodes, edges, facts, labels, relations) = {
         let mut store = state.store.write().await;
         generate_powerlaw(&mut store, req.nodes, req.edges, req.seed);
         store.stats()
     };
     persist(&state).await?;
+    tracing::info!(
+        event = "graph_ingested",
+        nodes = req.nodes,
+        edges = req.edges,
+        seed = req.seed,
+        "synthetic graph persisted"
+    );
     Ok(Json(StatsResponse {
         nodes,
         edges,
@@ -383,6 +256,10 @@ async fn create_node_handler(
     State(state): State<AppState>,
     Json(req): Json<CreateNodeRequest>,
 ) -> ApiResult<(StatusCode, Json<IdResponse>)> {
+    validate_label(&req.label)?;
+    validate_properties(&req.properties)?;
+    validate_provenance(req.provenance.as_ref())?;
+    validate_embedding(req.embedding.as_deref(), &state.limits)?;
     let provenance = req
         .provenance
         .map(ProvenanceInput::into_provenance)
@@ -390,10 +267,21 @@ async fn create_node_handler(
     let props = json_props(&req.properties);
     let id = {
         let mut store = state.store.write().await;
+        if let (Some(expected), Some(actual)) = (
+            expected_embedding_dimension(&store),
+            req.embedding.as_ref().map(Vec::len),
+        ) {
+            if expected != actual {
+                return Err(bad_request(format!(
+                    "embedding dimension {actual} does not match graph dimension {expected}"
+                )));
+            }
+        }
         store.add_node(&req.label, props, req.embedding, provenance)
     };
     metrics::counter!("padagonia_http_nodes_created_total").increment(1);
     persist(&state).await?;
+    tracing::info!(event = "node_created", node_id = id.0, "node persisted");
     Ok((StatusCode::CREATED, Json(IdResponse { id: id.0 })))
 }
 
@@ -423,6 +311,10 @@ async fn create_edge_handler(
     State(state): State<AppState>,
     Json(req): Json<CreateEdgeRequest>,
 ) -> ApiResult<(StatusCode, Json<IdResponse>)> {
+    validate_label(&req.label)?;
+    validate_properties(&req.properties)?;
+    validate_provenance(req.provenance.as_ref())?;
+    validate_embedding(req.embedding.as_deref(), &state.limits)?;
     {
         let store = state.store.read().await;
         if !store.nodes().contains_key(&NodeId(req.src)) {
@@ -450,6 +342,13 @@ async fn create_edge_handler(
     };
     metrics::counter!("padagonia_http_edges_created_total").increment(1);
     persist(&state).await?;
+    tracing::info!(
+        event = "edge_created",
+        edge_id = id.0,
+        src = req.src,
+        dst = req.dst,
+        "edge persisted"
+    );
     Ok((StatusCode::CREATED, Json(IdResponse { id: id.0 })))
 }
 
@@ -457,6 +356,20 @@ async fn bfs_handler(
     State(state): State<AppState>,
     Json(req): Json<BfsRequest>,
 ) -> ApiResult<Json<Vec<BfsEntry>>> {
+    if req.depth > state.limits.max_bfs_depth {
+        return Err(bad_request(format!(
+            "depth exceeds configured limit {}",
+            state.limits.max_bfs_depth
+        )));
+    }
+    if req
+        .min_confidence
+        .is_some_and(|confidence| !confidence.is_finite() || !(0.0..=1.0).contains(&confidence))
+    {
+        return Err(bad_request(
+            "min_confidence must be finite and between 0 and 1",
+        ));
+    }
     let store = state.store.read().await;
     let relation_id = match &req.relation {
         Some(relation) => Some(
@@ -492,6 +405,15 @@ async fn vector_search_handler(
     if req.query.is_empty() {
         return Err(bad_request("query embedding must not be empty"));
     }
+    if req.query.len() > state.limits.max_vector_dimensions {
+        return Err(bad_request(format!(
+            "query dimension exceeds configured limit {}",
+            state.limits.max_vector_dimensions
+        )));
+    }
+    if req.query.iter().any(|value| !value.is_finite()) {
+        return Err(bad_request("query embedding values must be finite"));
+    }
     let distance = match req.metric.as_deref() {
         None | Some("euclidean") => Distance::Euclidean,
         Some("cosine") => Distance::Cosine,
@@ -502,6 +424,14 @@ async fn vector_search_handler(
         }
     };
     let store = state.store.read().await;
+    if let Some(expected) = expected_embedding_dimension(&store) {
+        if req.query.len() != expected {
+            return Err(bad_request(format!(
+                "query dimension {} does not match graph dimension {expected}",
+                req.query.len()
+            )));
+        }
+    }
     let label_id = match &req.label {
         Some(label) => Some(
             store
@@ -513,10 +443,23 @@ async fn vector_search_handler(
     };
     let (m, ef_construction, ef_default) = state.hnsw;
     let k = req.k.unwrap_or(10);
+    if k == 0 || k > state.limits.max_vector_results {
+        return Err(bad_request(format!(
+            "k must be between 1 and {}",
+            state.limits.max_vector_results
+        )));
+    }
+    let ef_search = req.ef.unwrap_or(ef_default);
+    if ef_search == 0 || ef_search > state.limits.max_vector_ef {
+        return Err(bad_request(format!(
+            "ef must be between 1 and {}",
+            state.limits.max_vector_ef
+        )));
+    }
     let params = HnswParams {
         m,
         ef_construction,
-        ef_search: req.ef.unwrap_or(ef_default),
+        ef_search,
     };
     let engine = QueryEngine::new(&store);
     let hits = engine.vector_search_with_params(distance, params, &req.query, k, label_id);
@@ -533,14 +476,23 @@ async fn vector_search_handler(
 /// Wait for SIGTERM (Unix) or Ctrl-C, whichever comes first.
 async fn shutdown_signal() {
     let ctrl_c = async {
-        let _ = tokio::signal::ctrl_c().await;
+        if let Err(error) = tokio::signal::ctrl_c().await {
+            tracing::error!(event = "ctrl_c_handler_failed", error = %error, "Ctrl-C handler failed");
+            std::future::pending::<()>().await;
+        }
     };
 
     #[cfg(unix)]
     let terminate = async {
-        let mut sig = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("failed to install SIGTERM handler");
-        sig.recv().await;
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut signal) => {
+                signal.recv().await;
+            }
+            Err(error) => {
+                tracing::error!(event = "sigterm_handler_failed", error = %error, "SIGTERM handler failed");
+                std::future::pending::<()>().await;
+            }
+        }
     };
 
     #[cfg(not(unix))]

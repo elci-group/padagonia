@@ -13,8 +13,8 @@ services:
       # Persist graph data across restarts.
       - padagonia-data:/var/lib/padagonia/data
     environment:
-      # Override any config values at runtime using the PADAGONIA__ prefix.
-      # Example: PADAGONIA__SERVER__API_KEY: ${PADAGONIA_API_KEY:-padagonia-secret}
+      # Compose aborts before startup when the deployment secret is absent.
+      PADAGONIA__SERVER__API_KEY: ${PADAGONIA_API_KEY:?set PADAGONIA_API_KEY to at least 16 random bytes}
       RUST_LOG: info
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:7373/health"]

@@ -87,12 +87,53 @@ path = "docs/storage-compatibility.md"
 required = true
 require_line_count = 20
 
+[[file]]
+path = "docs/sota-assessment.md"
+required = true
+require_line_count = 80
+forbid_regex = ["TODO", "FIXME", "TBD"]
+
+[[file]]
+path = "docs/design-principles.md"
+required = true
+require_line_count = 40
+forbid_regex = ["TODO", "FIXME", "TBD"]
+
+[[file]]
+path = "docs/threat-model.md"
+required = true
+require_line_count = 50
+forbid_regex = ["TODO", "FIXME", "TBD"]
+
+[[file]]
+path = "docs/openapi.json"
+required = true
+require_regex = ["openapi", "/api/v1/nodes", "/api/v1/vector-search"]
+
 [[command]]
 name = "cargo test"
 cmd = ["cargo", "test"]
 expect_exit = 0
 timeout_secs = 300
 stdout_contains = ["test result: ok"]
+
+[[command]]
+name = "cargo fmt"
+cmd = ["cargo", "fmt", "--check"]
+expect_exit = 0
+timeout_secs = 60
+
+[[command]]
+name = "cargo clippy"
+cmd = ["cargo", "clippy", "--all-targets", "--", "-D", "warnings"]
+expect_exit = 0
+timeout_secs = 300
+
+[[command]]
+name = "cargo doc"
+cmd = ["cargo", "doc", "--no-deps"]
+expect_exit = 0
+timeout_secs = 300
 
 [[command]]
 name = "release bench summary"
