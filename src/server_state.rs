@@ -1,7 +1,9 @@
 //! Shared HTTP state and process-wide request-rate governance.
 
 use crate::app_config::LimitsConfig;
+use crate::outbox::PersistentOutbox;
 use crate::store::Store;
+use crate::transaction::TransactionJournal;
 use metrics_exporter_prometheus::PrometheusHandle;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -16,6 +18,8 @@ pub struct AppState {
     pub(crate) data_path: Arc<PathBuf>,
     pub(crate) hnsw: (usize, usize, usize),
     pub(crate) limits: LimitsConfig,
+    pub(crate) journal: Arc<Mutex<TransactionJournal>>,
+    pub(crate) outbox: Arc<Mutex<PersistentOutbox>>,
     rate_limiter: Arc<Mutex<RateLimiter>>,
 }
 
@@ -45,16 +49,42 @@ impl AppState {
         hnsw: (usize, usize, usize),
         limits: LimitsConfig,
     ) -> Self {
+        Self::try_new_with_limits(store, metrics_handle, api_key, data_path, hnsw, limits)
+            .expect("transaction journal must be openable")
+    }
+
+    pub fn try_new_with_limits(
+        mut store: Store,
+        metrics_handle: PrometheusHandle,
+        api_key: impl Into<String>,
+        data_path: PathBuf,
+        hnsw: (usize, usize, usize),
+        limits: LimitsConfig,
+    ) -> Result<Self, String> {
         let rate_limiter = RateLimiter::new(limits.requests_per_second, limits.request_burst);
-        Self {
+        let journal_path = data_path.with_extension("journal");
+        let journal = TransactionJournal::open(journal_path).map_err(|error| error.to_string())?;
+        let outbox_path = data_path.with_extension("outbox");
+        let outbox = PersistentOutbox::open(outbox_path).map_err(|error| error.to_string())?;
+        // A journal can rebuild an empty graph after a crash that occurred
+        // before the follow-up snapshot. Non-empty snapshots are already the
+        // checkpoint boundary and must not receive the full journal again.
+        if store.nodes().is_empty() && store.edges().is_empty() {
+            journal
+                .replay(&mut store)
+                .map_err(|error| error.to_string())?;
+        }
+        Ok(Self {
             store: Arc::new(RwLock::new(store)),
             metrics_handle,
             api_key: Arc::from(api_key.into().into_boxed_str()),
             data_path: Arc::new(data_path),
             hnsw,
             limits,
+            journal: Arc::new(Mutex::new(journal)),
+            outbox: Arc::new(Mutex::new(outbox)),
             rate_limiter: Arc::new(Mutex::new(rate_limiter)),
-        }
+        })
     }
 
     pub(crate) async fn allow_request(&self) -> bool {

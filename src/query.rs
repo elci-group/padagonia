@@ -2,6 +2,7 @@ use crate::edge::Edge;
 use crate::fact::FactSubject;
 use crate::hnsw::{Distance, HnswParams};
 use crate::id::{LabelId, NodeId, RelationId};
+use crate::identity::NamespaceId;
 use crate::node::Node;
 use crate::provenance::Provenance;
 use crate::store::Store;
@@ -31,9 +32,144 @@ pub struct QueryEngine<'a> {
     store: &'a Store,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct NodeQuery {
+    pub namespace: Option<NamespaceId>,
+    pub label: Option<LabelId>,
+    pub created_after: Option<u64>,
+    pub created_before: Option<u64>,
+    pub limit: usize,
+    pub cursor: Option<String>,
+}
+
+pub struct NodePage<'a> {
+    pub entries: Vec<&'a Node>,
+    pub next_cursor: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct NumericAggregate {
+    pub count: usize,
+    pub sum: f64,
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+}
+
 impl<'a> QueryEngine<'a> {
     pub fn new(store: &'a Store) -> Self {
         Self { store }
+    }
+
+    pub fn exact_node(&self, namespace: &NamespaceId, external_id: &str) -> Option<&'a Node> {
+        self.store
+            .node_by_external_id(namespace, external_id)
+            .and_then(|id| self.store.nodes.get(&id))
+    }
+
+    /// Bounded, stable pagination over node records.
+    pub fn nodes_page(&self, query: &NodeQuery) -> NodePage<'a> {
+        let limit = query.limit.clamp(1, 10_000);
+        let after = query.cursor.as_deref().and_then(parse_cursor);
+        let mut nodes: Vec<_> = query
+            .label
+            .and_then(|label| self.store.node_label_index.get(&label))
+            .map_or_else(
+                || self.store.nodes.values().collect(),
+                |ids| {
+                    ids.iter()
+                        .filter_map(|id| self.store.nodes.get(id))
+                        .collect()
+                },
+            );
+        nodes.sort_by_key(|node| (node.created_at, node.id));
+        let mut entries: Vec<&'a Node> = Vec::with_capacity(limit);
+        let mut next_cursor = None;
+        for node in nodes {
+            if query
+                .namespace
+                .as_ref()
+                .is_some_and(|ns| &node.namespace != ns)
+                || query.created_after.is_some_and(|at| node.created_at <= at)
+                || query.created_before.is_some_and(|at| node.created_at >= at)
+                || after.is_some_and(|key| (node.created_at, node.id.0) <= key)
+            {
+                continue;
+            }
+            if entries.len() == limit {
+                next_cursor = entries
+                    .last()
+                    .map(|last| format_cursor(last.created_at, last.id.0));
+                break;
+            }
+            entries.push(node);
+        }
+        NodePage {
+            entries,
+            next_cursor,
+        }
+    }
+
+    pub fn count_nodes(&self, namespace: Option<&NamespaceId>, label: Option<LabelId>) -> usize {
+        label
+            .and_then(|label| self.store.node_label_index.get(&label))
+            .map_or_else(
+                || {
+                    self.store
+                        .nodes
+                        .values()
+                        .filter(|node| namespace.is_none_or(|ns| &node.namespace == ns))
+                        .count()
+                },
+                |ids| {
+                    ids.iter()
+                        .filter_map(|id| self.store.nodes.get(id))
+                        .filter(|node| namespace.is_none_or(|ns| &node.namespace == ns))
+                        .count()
+                },
+            )
+    }
+
+    pub fn aggregate_numeric_property(
+        &self,
+        namespace: Option<&NamespaceId>,
+        label: Option<LabelId>,
+        key: crate::KeyId,
+    ) -> NumericAggregate {
+        let nodes: Vec<&'a Node> = label
+            .and_then(|label| self.store.node_label_index.get(&label))
+            .map_or_else(
+                || self.store.nodes.values().collect(),
+                |ids| {
+                    ids.iter()
+                        .filter_map(|id| self.store.nodes.get(id))
+                        .collect()
+                },
+            );
+        let mut aggregate = NumericAggregate::default();
+        for node in nodes {
+            if namespace.is_some_and(|ns| &node.namespace != ns) {
+                continue;
+            }
+            let Some(value) = node
+                .properties
+                .iter()
+                .find_map(|(property_key, value)| {
+                    (*property_key == key).then(|| match value {
+                        crate::Scalar::I64(value) => Some(*value as f64),
+                        crate::Scalar::F64(value) if value.is_finite() => Some(*value),
+                        _ => None,
+                    })
+                })
+                .flatten()
+            else {
+                continue;
+            };
+            aggregate.count += 1;
+            aggregate.sum += value;
+            aggregate.min = Some(aggregate.min.map_or(value, |current| current.min(value)));
+            aggregate.max = Some(aggregate.max.map_or(value, |current| current.max(value)));
+        }
+        aggregate
     }
 
     pub fn outgoing(&self, node: NodeId, relation: Option<RelationId>) -> Vec<&'a Edge> {
@@ -255,6 +391,20 @@ impl<'a> QueryEngine<'a> {
         results.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
         results
     }
+}
+
+fn format_cursor(created_at: u64, id: u64) -> String {
+    format!("{created_at:016x}{id:016x}")
+}
+
+fn parse_cursor(cursor: &str) -> Option<(u64, u64)> {
+    if cursor.len() != 32 {
+        return None;
+    }
+    Some((
+        u64::from_str_radix(&cursor[..16], 16).ok()?,
+        u64::from_str_radix(&cursor[16..], 16).ok()?,
+    ))
 }
 
 fn euclidean_distance(a: &[f32], b: &[f32]) -> f32 {

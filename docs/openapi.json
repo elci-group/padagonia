@@ -68,6 +68,20 @@
           "embedding": {"type": "array", "items": {"type": "number"}},
           "provenance": {"$ref": "#/components/schemas/Provenance"}
         }
+      },
+      "BatchMutation": {
+        "type": "object",
+        "required": ["namespace", "idempotency_key", "mutations"],
+        "properties": {
+          "namespace": {"type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,256}$"},
+          "idempotency_key": {"type": "string", "minLength": 1},
+          "mutations": {"type": "array", "minItems": 1, "items": {"type": "object"}}
+        }
+      },
+      "BatchMutationResponse": {
+        "type": "object",
+        "required": ["api_version", "result"],
+        "properties": {"api_version": {"type": "string", "const": "v1"}, "result": {"type": "object"}}
       }
     },
     "responses": {
@@ -100,7 +114,19 @@
       "post": {"security": [{"bearerAuth": []}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["start", "depth"], "properties": {"start": {"type": "integer", "minimum": 0}, "depth": {"type": "integer", "minimum": 0}, "relation": {"type": "string"}, "min_confidence": {"type": "number", "minimum": 0, "maximum": 1}}}}}}, "responses": {"200": {"description": "Reached nodes and depths"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}}}
     },
     "/api/v1/vector-search": {
-      "post": {"security": [{"bearerAuth": []}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["query"], "properties": {"query": {"type": "array", "minItems": 1, "items": {"type": "number"}}, "k": {"type": "integer", "minimum": 1}, "ef": {"type": "integer", "minimum": 1}, "label": {"type": "string"}, "metric": {"enum": ["euclidean", "cosine"]}}}}}}, "responses": {"200": {"description": "Nearest nodes and distances"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}}}
+      "post": {
+        "security": [{"bearerAuth": []}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["query"], "properties": {"query": {"type": "array", "minItems": 1, "items": {"type": "number"}}, "k": {"type": "integer", "minimum": 1}, "ef": {"type": "integer", "minimum": 1}, "label": {"type": "string"}, "metric": {"enum": ["euclidean", "cosine"]}}}}}},
+        "responses": {"200": {"description": "Nearest nodes and distances"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}}
+      }
+    },
+    "/api/v1/transactions": {
+      "post": {
+        "security": [{"bearerAuth": []}],
+        "parameters": [{"name": "x-padagonia-namespace", "in": "header", "required": true, "schema": {"type": "string"}}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BatchMutation"}}}},
+        "responses": {"200": {"description": "Committed transaction", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BatchMutationResponse"}}}}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}}
+      }
     }
   }
 }

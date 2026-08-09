@@ -36,6 +36,7 @@ pub enum StoreError {
     InconsistentBlockPayload,
     UnknownStringId { id: u32 },
     DanglingEdge { edge_id: u64 },
+    CrossNamespaceEdge { edge_id: u64 },
     DanglingFact,
     DuplicateNodeId { id: u64 },
     DuplicateEdgeId { id: u64 },
@@ -62,6 +63,9 @@ impl fmt::Display for StoreError {
             StoreError::UnknownStringId { id } => write!(f, "Unknown ontology string id {}", id),
             StoreError::DanglingEdge { edge_id } => {
                 write!(f, "Dangling edge {} references missing node", edge_id)
+            }
+            StoreError::CrossNamespaceEdge { edge_id } => {
+                write!(f, "edge {} crosses namespace boundaries", edge_id)
             }
             StoreError::DanglingFact => write!(f, "Dangling fact references missing subject"),
             StoreError::DuplicateNodeId { id } => write!(f, "Duplicate node id {id}"),
@@ -295,6 +299,9 @@ impl Store {
                         .entry(node.label)
                         .or_default()
                         .push(node.id);
+                    store
+                        .node_external_index
+                        .insert((node.namespace.clone(), node.external_id.clone()), node.id);
                     store.nodes.insert(node.id, node.clone());
                 }
             }
@@ -313,6 +320,9 @@ impl Store {
                         .entry(edge.label)
                         .or_default()
                         .push(edge.id);
+                    store
+                        .edge_external_index
+                        .insert((edge.namespace.clone(), edge.external_id.clone()), edge.id);
                     store.outgoing.entry(edge.src).or_default().push(edge.id);
                     store.incoming.entry(edge.dst).or_default().push(edge.id);
                     store.edges.insert(edge.id, edge.clone());
@@ -510,6 +520,11 @@ fn validate_store(store: &Store) -> Result<()> {
         }
         if !store.nodes.contains_key(&edge.src) || !store.nodes.contains_key(&edge.dst) {
             return Err(StoreError::DanglingEdge { edge_id: edge.id.0 });
+        }
+        if store.nodes[&edge.src].namespace != edge.namespace
+            || store.nodes[&edge.dst].namespace != edge.namespace
+        {
+            return Err(StoreError::CrossNamespaceEdge { edge_id: edge.id.0 });
         }
         require_relation(&store.string_table, edge.label)?;
         require_keys(&store.string_table, &edge.properties)?;

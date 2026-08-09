@@ -5,6 +5,7 @@ use crate::api::*;
 use crate::app_config::Settings;
 use crate::auth::auth_middleware;
 use crate::bench_support::generate_powerlaw;
+use crate::contract::{BatchMutationRequest, BatchMutationResponse, API_VERSION};
 use crate::hnsw::{Distance, HnswParams};
 use crate::http_error::{bad_request, internal_error, not_found, ApiResult};
 use crate::id::NodeId;
@@ -44,6 +45,7 @@ pub fn router(state: AppState, metrics_path: &str) -> Router {
         .route("/edges", post(create_edge_handler))
         .route("/bfs", post(bfs_handler))
         .route("/vector-search", post(vector_search_handler))
+        .route("/transactions", post(transaction_handler))
         .route_layer(axum::middleware::from_fn_with_state(
             state.api_key.clone(),
             auth_middleware,
@@ -209,6 +211,54 @@ async fn stats_handler(State(state): State<AppState>) -> Json<StatsResponse> {
         labels,
         relations,
     })
+}
+
+async fn transaction_handler(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Json(request): Json<BatchMutationRequest>,
+) -> ApiResult<Json<BatchMutationResponse>> {
+    let namespace_header = headers
+        .get("x-padagonia-namespace")
+        .ok_or_else(|| bad_request("x-padagonia-namespace header is required"))?
+        .to_str()
+        .map_err(|_| bad_request("x-padagonia-namespace header is invalid"))?;
+    if namespace_header != request.namespace.as_str() {
+        return Err(bad_request(
+            "namespace header does not match transaction namespace",
+        ));
+    }
+    let namespace = request.namespace.clone();
+    let transaction = request.into_transaction();
+    let result = {
+        let mut store = state.store.write().await;
+        let mut journal = state.journal.lock().await;
+        let replay = journal
+            .committed_result(&transaction.idempotency_key)
+            .is_some();
+        journal
+            .commit(&mut store, transaction)
+            .map(|result| (result, replay))
+            .map_err(|error| internal_error(format!("transaction commit failed: {error}")))?
+    };
+    if !result.1 {
+        state
+            .outbox
+            .lock()
+            .await
+            .append(
+                namespace,
+                "transaction.committed",
+                rmp_serde::to_vec(&result.0)
+                    .map_err(|error| internal_error(format!("outbox encode failed: {error}")))?,
+            )
+            .map_err(|error| internal_error(format!("outbox append failed: {error}")))?;
+    }
+    persist(&state).await?;
+    Ok(Json(BatchMutationResponse {
+        api_version: API_VERSION.to_string(),
+        result: result.0,
+    }))
 }
 
 async fn ingest_handler(

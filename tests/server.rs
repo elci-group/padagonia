@@ -83,6 +83,39 @@ async fn protected_routes_require_valid_bearer_token() {
 }
 
 #[tokio::test]
+async fn versioned_transaction_route_is_namespace_bound_and_idempotent() {
+    let (app, _dir) = test_app();
+    let body = json!({
+        "namespace": "workspace",
+        "idempotency_key": "txn-1",
+        "mutations": [{"AddNode": {
+            "namespace": "workspace",
+            "external_id": "run-1",
+            "label": "Run",
+            "properties": [],
+            "embedding": null,
+            "provenance": {"agent": "test", "model": "fixture", "confidence": 1.0, "cost": 0.0, "timestamp": 1, "evidence": []}
+        }}]
+    });
+    let tx_request = |namespace: &str| {
+        Request::builder()
+            .method("POST")
+            .uri("/api/v1/transactions")
+            .header("authorization", format!("Bearer {KEY}"))
+            .header("x-padagonia-namespace", namespace)
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap()
+    };
+    let response = app.clone().oneshot(tx_request("workspace")).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let response = app.clone().oneshot(tx_request("workspace")).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let (_, stats) = request(&app, "GET", "/api/v1/stats", Some(KEY), None).await;
+    assert_eq!(stats["nodes"], 1);
+}
+
+#[tokio::test]
 async fn create_node_and_edge_then_read_back() {
     let (app, _dir) = test_app();
 
