@@ -252,7 +252,7 @@ impl TransactionJournal {
         let temporary = self
             .path
             .with_extension(format!("journal.tmp.{}", std::process::id()));
-        let mut replacement = OpenOptions::new()
+        let replacement = OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(&temporary)?;
