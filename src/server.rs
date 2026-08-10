@@ -46,6 +46,7 @@ pub fn router(state: AppState, metrics_path: &str) -> Router {
         .route("/bfs", post(bfs_handler))
         .route("/vector-search", post(vector_search_handler))
         .route("/transactions", post(transaction_handler))
+        .route("/query/nodes", post(query_nodes_handler))
         .route_layer(axum::middleware::from_fn_with_state(
             state.api_key.clone(),
             auth_middleware,
@@ -211,6 +212,19 @@ async fn stats_handler(State(state): State<AppState>) -> Json<StatsResponse> {
         facts,
         labels,
         relations,
+    })
+}
+
+async fn query_nodes_handler(
+    State(state): State<AppState>,
+    Json(request): Json<crate::contract::NodeQueryRequest>,
+) -> Json<crate::contract::PageCursorResponse> {
+    let store = state.store.read().await;
+    let page = QueryEngine::new(&store).nodes_page(&request.clone().into_query());
+    Json(crate::contract::PageCursorResponse {
+        api_version: API_VERSION.to_string(),
+        node_ids: page.entries.into_iter().map(|node| node.id.0).collect(),
+        next_cursor: page.next_cursor,
     })
 }
 
