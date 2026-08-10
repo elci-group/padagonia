@@ -249,7 +249,9 @@ impl TransactionJournal {
     /// checkpoint. The replacement is atomic and the parent directory is
     /// synced on Unix so a crash cannot leave a partial journal.
     pub fn checkpoint(&mut self) -> Result<(), JournalError> {
-        let temporary = self.path.with_extension(format!("journal.tmp.{}", std::process::id()));
+        let temporary = self
+            .path
+            .with_extension(format!("journal.tmp.{}", std::process::id()));
         let mut replacement = OpenOptions::new()
             .write(true)
             .create_new(true)

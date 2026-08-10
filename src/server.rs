@@ -333,9 +333,16 @@ async fn create_node_handler(
         .map(ProvenanceInput::into_provenance)
         .unwrap_or_else(default_provenance);
     let external_id = req.external_id.unwrap_or_else(|| {
-        format!("http-node-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos()))
+        format!(
+            "http-node-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        )
     });
-    let idempotency_key = req.idempotency_key.unwrap_or_else(|| format!("create-node:{}:{}", req.namespace, external_id));
+    let idempotency_key = req
+        .idempotency_key
+        .unwrap_or_else(|| format!("create-node:{}:{}", req.namespace, external_id));
     let props = json_props(&req.properties)
         .into_iter()
         .map(|(key, value)| (key.to_owned(), value))
@@ -366,9 +373,12 @@ async fn create_node_handler(
         };
         let mut store = state.store.write().await;
         let mut journal = state.journal.lock().await;
-        journal.commit(&mut store, transaction)
+        journal
+            .commit(&mut store, transaction)
             .map_err(|error| internal_error(format!("node transaction failed: {error}")))?
-            .node_ids.into_iter().next()
+            .node_ids
+            .into_iter()
+            .next()
             .ok_or_else(|| internal_error("node transaction returned no node id"))?
     };
     metrics::counter!("padagonia_http_nodes_created_total").increment(1);
@@ -422,9 +432,16 @@ async fn create_edge_handler(
         .map(ProvenanceInput::into_provenance)
         .unwrap_or_else(default_provenance);
     let external_id = req.external_id.unwrap_or_else(|| {
-        format!("http-edge-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos()))
+        format!(
+            "http-edge-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        )
     });
-    let idempotency_key = req.idempotency_key.unwrap_or_else(|| format!("create-edge:{}:{}", req.namespace, external_id));
+    let idempotency_key = req
+        .idempotency_key
+        .unwrap_or_else(|| format!("create-edge:{}:{}", req.namespace, external_id));
     let props = json_props(&req.properties)
         .into_iter()
         .map(|(key, value)| (key.to_owned(), value))
@@ -432,22 +449,28 @@ async fn create_edge_handler(
     let id = {
         let mut store = state.store.write().await;
         let mut journal = state.journal.lock().await;
-        journal.commit(&mut store, crate::transaction::Transaction {
-            idempotency_key,
-            mutations: vec![crate::transaction::Mutation::AddEdge {
-                namespace: req.namespace,
-                external_id,
-                src: NodeId(req.src),
-                dst: NodeId(req.dst),
-                label: req.label,
-                properties: props,
-                embedding: req.embedding,
-                provenance,
-            }],
-        })
-        .map_err(|error| bad_request(format!("edge transaction failed: {error}")))?
-        .edge_ids.into_iter().next()
-        .ok_or_else(|| internal_error("edge transaction returned no edge id"))?
+        journal
+            .commit(
+                &mut store,
+                crate::transaction::Transaction {
+                    idempotency_key,
+                    mutations: vec![crate::transaction::Mutation::AddEdge {
+                        namespace: req.namespace,
+                        external_id,
+                        src: NodeId(req.src),
+                        dst: NodeId(req.dst),
+                        label: req.label,
+                        properties: props,
+                        embedding: req.embedding,
+                        provenance,
+                    }],
+                },
+            )
+            .map_err(|error| bad_request(format!("edge transaction failed: {error}")))?
+            .edge_ids
+            .into_iter()
+            .next()
+            .ok_or_else(|| internal_error("edge transaction returned no edge id"))?
     };
     metrics::counter!("padagonia_http_edges_created_total").increment(1);
     persist(&state).await?;
