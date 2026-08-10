@@ -168,6 +168,10 @@ pub(crate) fn expected_embedding_dimension(store: &Store) -> Option<usize> {
 
 #[derive(Deserialize)]
 pub(crate) struct CreateNodeRequest {
+    #[serde(default)]
+    pub(crate) namespace: crate::identity::NamespaceId,
+    pub(crate) external_id: Option<String>,
+    pub(crate) idempotency_key: Option<String>,
     pub(crate) label: String,
     #[serde(default)]
     pub(crate) properties: HashMap<String, serde_json::Value>,
@@ -177,6 +181,10 @@ pub(crate) struct CreateNodeRequest {
 
 #[derive(Deserialize)]
 pub(crate) struct CreateEdgeRequest {
+    #[serde(default)]
+    pub(crate) namespace: crate::identity::NamespaceId,
+    pub(crate) external_id: Option<String>,
+    pub(crate) idempotency_key: Option<String>,
     pub(crate) src: u64,
     pub(crate) dst: u64,
     pub(crate) label: String,
