@@ -1,8 +1,39 @@
 # PADAGONIA SQL-Replacement Directive
 
-Status: implementation directive v2 — not ready for SQL cutover until every gate below is green  
+Status: implementation directive v3 — executable closure contract; SQL cutover remains blocked until the final readiness report is green  
 Scope: PADAGONIA server and Dreamsequence platform persistence  
 Decision owner: PADAGONIA maintainers  
+
+### Closure rule
+
+Each gap is closed only by a production code path, a durable on-disk format or
+recovery rule, an HTTP contract, an adversarial test, and a recorded benchmark
+measurement. “Module exists” and “unit test passes” are insufficient. The
+implementation sequence below therefore treats the following as release
+artifacts: a migration manifest, a recovery/restore transcript, an
+authorization matrix, a lifecycle retention report, an API contract report,
+and a machine-readable SQL comparison result. Any missing artifact is a hard
+no-go, regardless of performance.
+
+### Non-negotiable design decisions
+
+- PADAGONIA is single-writer per graph, with journal commit, snapshot replace,
+  and journal checkpoint serialized by one commit gate.
+- A snapshot is never treated as a journal checkpoint by its size or emptiness;
+  replay is identity-aware and applies only absent external IDs.
+- Journal compaction retains durable idempotency receipts and the last commit
+  sequence; compaction may not erase replay protection.
+- Credentials are scoped to a namespace and role, stored as hashes, revocable
+  without restart, and audited. The bootstrap administrator key is a
+  temporary compatibility mechanism, not the tenant authorization model.
+- All mutation routes compile to the same transaction path. Synthetic ingest
+  is a benchmark/admin adapter and cannot bypass the journal.
+- Lifecycle state is part of the durable snapshot and journal, not an
+  in-memory side registry. Tombstones are checked before replay and before
+  external-ID reuse.
+- The benchmark harness fails closed on data loss, tenant leakage, nonzero
+  error rates, or incomparable workloads; a faster but unsafe result is not a
+  pass.
 
 ## 1. Directive
 
