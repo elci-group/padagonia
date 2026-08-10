@@ -84,14 +84,15 @@ pub async fn serve(settings: Settings) -> Result<(), Box<dyn std::error::Error +
 
     let data_path = settings.data_dir();
     let store = load_store(&data_path).await?;
-    let state = AppState::new_with_limits(
+    let state = AppState::try_new_with_limits(
         store,
         metrics_handle,
         settings.api_key().to_string(),
         data_path.clone(),
         settings.hnsw_params(),
         settings.limits().clone(),
-    );
+    )
+    .map_err(|error| format!("failed to initialize durable server state: {error}"))?;
     let app = router(state.clone(), settings.metrics_path());
 
     let listener = tokio::net::TcpListener::bind(settings.listen_addr()).await?;
@@ -317,9 +318,16 @@ async fn create_node_handler(
         .provenance
         .map(ProvenanceInput::into_provenance)
         .unwrap_or_else(default_provenance);
-    let props = json_props(&req.properties);
+    let external_id = req.external_id.unwrap_or_else(|| {
+        format!("http-node-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos()))
+    });
+    let idempotency_key = req.idempotency_key.unwrap_or_else(|| format!("create-node:{}:{}", req.namespace, external_id));
+    let props = json_props(&req.properties)
+        .into_iter()
+        .map(|(key, value)| (key.to_owned(), value))
+        .collect();
     let id = {
-        let mut store = state.store.write().await;
+        let store = state.store.read().await;
         if let (Some(expected), Some(actual)) = (
             expected_embedding_dimension(&store),
             req.embedding.as_ref().map(Vec::len),
@@ -330,7 +338,24 @@ async fn create_node_handler(
                 )));
             }
         }
-        store.add_node(&req.label, props, req.embedding, provenance)
+        drop(store);
+        let transaction = crate::transaction::Transaction {
+            idempotency_key,
+            mutations: vec![crate::transaction::Mutation::AddNode {
+                namespace: req.namespace,
+                external_id,
+                label: req.label,
+                properties: props,
+                embedding: req.embedding,
+                provenance,
+            }],
+        };
+        let mut store = state.store.write().await;
+        let mut journal = state.journal.lock().await;
+        journal.commit(&mut store, transaction)
+            .map_err(|error| internal_error(format!("node transaction failed: {error}")))?
+            .node_ids.into_iter().next()
+            .ok_or_else(|| internal_error("node transaction returned no node id"))?
     };
     metrics::counter!("padagonia_http_nodes_created_total").increment(1);
     persist(&state).await?;
@@ -382,17 +407,33 @@ async fn create_edge_handler(
         .provenance
         .map(ProvenanceInput::into_provenance)
         .unwrap_or_else(default_provenance);
-    let props = json_props(&req.properties);
+    let external_id = req.external_id.unwrap_or_else(|| {
+        format!("http-edge-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos()))
+    });
+    let idempotency_key = req.idempotency_key.unwrap_or_else(|| format!("create-edge:{}:{}", req.namespace, external_id));
+    let props = json_props(&req.properties)
+        .into_iter()
+        .map(|(key, value)| (key.to_owned(), value))
+        .collect();
     let id = {
         let mut store = state.store.write().await;
-        store.add_edge(
-            NodeId(req.src),
-            NodeId(req.dst),
-            &req.label,
-            props,
-            req.embedding,
-            provenance,
-        )
+        let mut journal = state.journal.lock().await;
+        journal.commit(&mut store, crate::transaction::Transaction {
+            idempotency_key,
+            mutations: vec![crate::transaction::Mutation::AddEdge {
+                namespace: req.namespace,
+                external_id,
+                src: NodeId(req.src),
+                dst: NodeId(req.dst),
+                label: req.label,
+                properties: props,
+                embedding: req.embedding,
+                provenance,
+            }],
+        })
+        .map_err(|error| bad_request(format!("edge transaction failed: {error}")))?
+        .edge_ids.into_iter().next()
+        .ok_or_else(|| internal_error("edge transaction returned no edge id"))?
     };
     metrics::counter!("padagonia_http_edges_created_total").increment(1);
     persist(&state).await?;
