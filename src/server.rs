@@ -218,6 +218,7 @@ async fn transaction_handler(
     headers: axum::http::HeaderMap,
     Json(request): Json<BatchMutationRequest>,
 ) -> ApiResult<Json<BatchMutationResponse>> {
+    let _commit_guard = state.commit_gate.lock().await;
     let namespace_header = headers
         .get("x-padagonia-namespace")
         .ok_or_else(|| bad_request("x-padagonia-namespace header is required"))?
@@ -265,6 +266,7 @@ async fn ingest_handler(
     State(state): State<AppState>,
     Json(req): Json<IngestRequest>,
 ) -> ApiResult<Json<StatsResponse>> {
+    let _commit_guard = state.commit_gate.lock().await;
     if req.nodes > state.limits.max_ingest_nodes {
         return Err(bad_request(format!(
             "nodes exceeds configured limit {}",
@@ -306,6 +308,7 @@ async fn create_node_handler(
     State(state): State<AppState>,
     Json(req): Json<CreateNodeRequest>,
 ) -> ApiResult<(StatusCode, Json<IdResponse>)> {
+    let _commit_guard = state.commit_gate.lock().await;
     validate_label(&req.label)?;
     validate_properties(&req.properties)?;
     validate_provenance(req.provenance.as_ref())?;
@@ -361,6 +364,7 @@ async fn create_edge_handler(
     State(state): State<AppState>,
     Json(req): Json<CreateEdgeRequest>,
 ) -> ApiResult<(StatusCode, Json<IdResponse>)> {
+    let _commit_guard = state.commit_gate.lock().await;
     validate_label(&req.label)?;
     validate_properties(&req.properties)?;
     validate_provenance(req.provenance.as_ref())?;
