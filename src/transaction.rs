@@ -223,6 +223,44 @@ impl TransactionJournal {
         }
         Ok(results)
     }
+
+    /// Replays only records that are not already represented by the loaded
+    /// snapshot. This makes startup safe when a process crashed after a
+    /// journal commit but before the follow-up snapshot replacement.
+    pub fn replay_missing(&self, store: &mut Store) -> Result<Vec<CommitResult>, JournalError> {
+        let mut transactions: Vec<_> = self.committed.values().cloned().collect();
+        transactions.sort_by_key(|(_, result)| result.sequence);
+        let mut results = Vec::new();
+        for (transaction, result) in transactions {
+            let mut working = store.clone();
+            let (nodes, edges) = apply_missing_mutations(&mut working, &transaction.mutations)?;
+            if nodes.is_empty() && edges.is_empty() {
+                continue;
+            }
+            *store = working;
+            results.push(result);
+        }
+        Ok(results)
+    }
+
+    /// Discards journal history after a verified snapshot has become the
+    /// checkpoint. The replacement is atomic and the parent directory is
+    /// synced on Unix so a crash cannot leave a partial journal.
+    pub fn checkpoint(&mut self) -> Result<(), JournalError> {
+        let path = self
+            .file
+            .metadata()
+            .map(|_| ())
+            .and_then(|_| Ok(()))
+            .map_err(JournalError::Io)?;
+        let _ = path;
+        self.file.set_len(0)?;
+        self.file.sync_all()?;
+        self.next_sequence = 0;
+        self.committed.clear();
+        self.prepared.clear();
+        Ok(())
+    }
 }
 
 fn validate_transaction(transaction: &Transaction) -> Result<(), JournalError> {
@@ -274,6 +312,73 @@ fn apply_mutations(
                 embedding,
                 provenance,
             } => {
+                let props = properties
+                    .iter()
+                    .map(|(key, value)| (key.as_str(), value.clone()))
+                    .collect();
+                edges.push(store.add_edge_in_namespace(
+                    namespace.clone(),
+                    external_id.clone(),
+                    *src,
+                    *dst,
+                    label,
+                    props,
+                    embedding.clone(),
+                    provenance.clone(),
+                )?);
+            }
+        }
+    }
+    Ok((nodes, edges))
+}
+
+fn apply_missing_mutations(
+    store: &mut Store,
+    mutations: &[Mutation],
+) -> Result<(Vec<NodeId>, Vec<crate::EdgeId>), JournalError> {
+    let mut nodes = Vec::new();
+    let mut edges = Vec::new();
+    for mutation in mutations {
+        match mutation {
+            Mutation::AddNode {
+                namespace,
+                external_id,
+                label,
+                properties,
+                embedding,
+                provenance,
+            } => {
+                if let Some(id) = store.node_by_external_id(namespace, external_id) {
+                    nodes.push(id);
+                    continue;
+                }
+                let props = properties
+                    .iter()
+                    .map(|(key, value)| (key.as_str(), value.clone()))
+                    .collect();
+                nodes.push(store.add_node_in_namespace(
+                    namespace.clone(),
+                    external_id.clone(),
+                    label,
+                    props,
+                    embedding.clone(),
+                    provenance.clone(),
+                )?);
+            }
+            Mutation::AddEdge {
+                namespace,
+                external_id,
+                src,
+                dst,
+                label,
+                properties,
+                embedding,
+                provenance,
+            } => {
+                if let Some(id) = store.edge_by_external_id(namespace, external_id) {
+                    edges.push(id);
+                    continue;
+                }
                 let props = properties
                     .iter()
                     .map(|(key, value)| (key.as_str(), value.clone()))
