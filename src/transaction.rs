@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const MAX_RECORD_BYTES: u64 = 64 * 1024 * 1024;
 
@@ -115,6 +115,7 @@ impl From<IdentityError> for JournalError {
 /// Append-only journal. Loading validates every record before exposing it.
 pub struct TransactionJournal {
     file: File,
+    path: PathBuf,
     next_sequence: u64,
     committed: HashMap<String, (Transaction, CommitResult)>,
     prepared: HashMap<String, Transaction>,
@@ -132,12 +133,12 @@ impl fmt::Debug for TransactionJournal {
 
 impl TransactionJournal {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, JournalError> {
-        let path = path.as_ref();
+        let path = path.as_ref().to_owned();
         let mut reader = OpenOptions::new()
             .create(true)
             .read(true)
             .append(true)
-            .open(path)?;
+            .open(&path)?;
         let mut committed = HashMap::new();
         let mut prepared = HashMap::new();
         let mut sequence = 0;
@@ -164,6 +165,7 @@ impl TransactionJournal {
         }
         Ok(Self {
             file: reader,
+            path,
             next_sequence: sequence,
             committed,
             prepared,
@@ -247,20 +249,35 @@ impl TransactionJournal {
     /// checkpoint. The replacement is atomic and the parent directory is
     /// synced on Unix so a crash cannot leave a partial journal.
     pub fn checkpoint(&mut self) -> Result<(), JournalError> {
-        let path = self
-            .file
-            .metadata()
-            .map(|_| ())
-            .and_then(|_| Ok(()))
-            .map_err(JournalError::Io)?;
-        let _ = path;
-        self.file.set_len(0)?;
-        self.file.sync_all()?;
+        let temporary = self.path.with_extension(format!("journal.tmp.{}", std::process::id()));
+        let mut replacement = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)?;
+        replacement.sync_all()?;
+        std::fs::rename(&temporary, &self.path)?;
+        if let Some(parent) = self.path.parent() {
+            sync_directory(parent)?;
+        }
+        self.file = OpenOptions::new()
+            .read(true)
+            .append(true)
+            .open(&self.path)?;
         self.next_sequence = 0;
         self.committed.clear();
         self.prepared.clear();
         Ok(())
     }
+}
+
+#[cfg(unix)]
+fn sync_directory(path: &Path) -> io::Result<()> {
+    File::open(path)?.sync_all()
+}
+
+#[cfg(not(unix))]
+fn sync_directory(_path: &Path) -> io::Result<()> {
+    Ok(())
 }
 
 fn validate_transaction(transaction: &Transaction) -> Result<(), JournalError> {

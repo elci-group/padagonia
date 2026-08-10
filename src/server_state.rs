@@ -20,6 +20,9 @@ pub struct AppState {
     pub(crate) limits: LimitsConfig,
     pub(crate) journal: Arc<Mutex<TransactionJournal>>,
     pub(crate) outbox: Arc<Mutex<PersistentOutbox>>,
+    /// Serializes journal commit, snapshot replacement and checkpointing.
+    /// This is the single-writer boundary for durable state.
+    pub(crate) commit_gate: Arc<Mutex<()>>,
     rate_limiter: Arc<Mutex<RateLimiter>>,
 }
 
@@ -66,14 +69,12 @@ impl AppState {
         let journal = TransactionJournal::open(journal_path).map_err(|error| error.to_string())?;
         let outbox_path = data_path.with_extension("outbox");
         let outbox = PersistentOutbox::open(outbox_path).map_err(|error| error.to_string())?;
-        // A journal can rebuild an empty graph after a crash that occurred
-        // before the follow-up snapshot. Non-empty snapshots are already the
-        // checkpoint boundary and must not receive the full journal again.
-        if store.nodes().is_empty() && store.edges().is_empty() {
-            journal
-                .replay(&mut store)
-                .map_err(|error| error.to_string())?;
-        }
+        // Replay only mutations absent from the snapshot. This covers both
+        // empty-store recovery and the crash window after a journal commit but
+        // before the snapshot replacement, without duplicating a valid graph.
+        journal
+            .replay_missing(&mut store)
+            .map_err(|error| error.to_string())?;
         Ok(Self {
             store: Arc::new(RwLock::new(store)),
             metrics_handle,
@@ -83,6 +84,7 @@ impl AppState {
             limits,
             journal: Arc::new(Mutex::new(journal)),
             outbox: Arc::new(Mutex::new(outbox)),
+            commit_gate: Arc::new(Mutex::new(())),
             rate_limiter: Arc::new(Mutex::new(rate_limiter)),
         })
     }
