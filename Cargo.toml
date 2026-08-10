@@ -1,6 +1,6 @@
 [package]
 name = "padagonia"
-version = "0.1.15"
+version = "0.1.16"
 edition = "2021"
 authors = ["ViCo Agent <agent@elci.group>"]
 description = "Ontology-native, immutable, provenance-rich graph store for autonomous AI agents."

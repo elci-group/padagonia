@@ -1,6 +1,6 @@
 # PADAGONIA SQL-Replacement Directive
 
-Status: proposed technical direction  
+Status: implementation directive v2 — not ready for SQL cutover until every gate below is green  
 Scope: PADAGONIA server and Dreamsequence platform persistence  
 Decision owner: PADAGONIA maintainers  
 
@@ -21,6 +21,38 @@ The project must not remove SQL merely because graph storage is more attractive
 for relationship queries. SQL replacement is complete only when PADAGONIA
 provides equivalent or better guarantees for every production workload that
 currently relies on SQL.
+
+This directive is also a wiring contract. A capability implemented only as an
+unused module, unit-test helper, or documentation claim is not considered
+closed. Every required property must be reachable through the server API,
+persisted by the production recovery path, covered by an integration test, and
+represented in the readiness report.
+
+## 1.1 Current revision gap register
+
+The following blockers must be closed before the replacement claim can be
+considered:
+
+- all mutating HTTP routes must use the transaction journal; legacy direct
+  mutation routes must become journal-backed compatibility adapters;
+- recovery must replay commits after the snapshot checkpoint, not only when the
+  snapshot happens to be empty;
+- journal checkpointing/compaction must bound replay time and disk growth;
+- the server must use namespace-scoped, role-aware, revocable credentials
+  instead of a single global API key;
+- quotas and lifecycle/tombstone state must be durable and enforced by the
+  server, not merely available as in-memory helper types;
+- query pagination, aggregates, exact lookup, and tenant filters must be
+  exposed through the versioned HTTP contract;
+- schema migrations must provide at least one tested forward migration path or
+  explicitly prove a clean rebuild from the journal;
+- the benchmark contract must execute comparable PADAGONIA/SQLite workloads,
+  capture raw results, and fail closed on safety violations;
+- production constructors and recovery paths must return structured errors
+  rather than panic on journal/storage initialization;
+- the operational documentation must state the remaining single-node limits,
+  backup procedure, restore procedure, and absence of replication until those
+  features are implemented.
 
 ## 2. Scope and non-scope
 
