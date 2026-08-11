@@ -15,7 +15,7 @@ d = 0.20
 r = 0.15
 
 [push]
-enabled = true
+enabled = false
 branch = "main"
 remote = "origin"
 
@@ -40,7 +40,7 @@ enabled = false
 min_commit_interval = 10
 
 [test]
-command = "cargo test"
+command = "CARGO_TARGET_DIR=target/kaptaind cargo test --tests -- --test-threads=1"
 required = true
 
 [build]
