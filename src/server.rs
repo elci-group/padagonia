@@ -352,9 +352,13 @@ async fn transaction_handler(
 
 async fn ingest_handler(
     State(state): State<AppState>,
+    Extension(principal): Extension<AuthenticatedPrincipal>,
     Json(req): Json<IngestRequest>,
 ) -> ApiResult<Json<StatsResponse>> {
     let _commit_guard = state.commit_gate.lock().await;
+    if !principal.role.permits(Operation::Administer) {
+        return Err(forbidden("synthetic ingest is restricted to administrators"));
+    }
     if req.nodes > state.limits.max_ingest_nodes {
         return Err(bad_request(format!(
             "nodes exceeds configured limit {}",
@@ -394,9 +398,13 @@ async fn ingest_handler(
 
 async fn create_node_handler(
     State(state): State<AppState>,
+    Extension(principal): Extension<AuthenticatedPrincipal>,
     Json(req): Json<CreateNodeRequest>,
 ) -> ApiResult<(StatusCode, Json<IdResponse>)> {
     let _commit_guard = state.commit_gate.lock().await;
+    if principal.namespace != req.namespace || !principal.role.permits(Operation::Write) {
+        return Err(forbidden("credential is not authorized for this namespace or operation"));
+    }
     validate_label(&req.label)?;
     validate_properties(&req.properties)?;
     validate_provenance(req.provenance.as_ref())?;
@@ -484,9 +492,13 @@ async fn get_node_handler(
 
 async fn create_edge_handler(
     State(state): State<AppState>,
+    Extension(principal): Extension<AuthenticatedPrincipal>,
     Json(req): Json<CreateEdgeRequest>,
 ) -> ApiResult<(StatusCode, Json<IdResponse>)> {
     let _commit_guard = state.commit_gate.lock().await;
+    if principal.namespace != req.namespace || !principal.role.permits(Operation::Write) {
+        return Err(forbidden("credential is not authorized for this namespace or operation"));
+    }
     validate_label(&req.label)?;
     validate_properties(&req.properties)?;
     validate_provenance(req.provenance.as_ref())?;
