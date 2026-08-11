@@ -16,7 +16,6 @@ use tokio::sync::{Mutex, RwLock};
 pub struct AppState {
     pub(crate) store: Arc<RwLock<Store>>,
     pub(crate) metrics_handle: PrometheusHandle,
-    pub(crate) api_key: Arc<str>,
     pub(crate) credentials: Arc<tokio::sync::RwLock<CredentialRegistry>>,
     pub(crate) data_path: Arc<PathBuf>,
     pub(crate) hnsw: (usize, usize, usize),
@@ -86,7 +85,6 @@ impl AppState {
         Ok(Self {
             store: Arc::new(RwLock::new(store)),
             metrics_handle,
-            api_key: Arc::from(api_key.into_boxed_str()),
             credentials: Arc::new(RwLock::new(credentials)),
             data_path: Arc::new(data_path),
             hnsw,
