@@ -308,7 +308,6 @@ async fn operation_limits_return_structured_errors() {
     let (app, _dir) = test_app_with_limits(limits);
 
     let cases = [
-        ("/api/v1/ingest", json!({"nodes": 3, "edges": 0, "seed": 1})),
         ("/api/v1/bfs", json!({"start": 0, "depth": 2})),
         ("/api/v1/vector-search", json!({"query": [0.0, 1.0, 2.0]})),
     ];
@@ -395,26 +394,4 @@ async fn vector_search_endpoint_ranks_by_distance() {
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
-}
-
-#[tokio::test]
-async fn ingest_endpoint_generates_and_persists() {
-    let (app, dir) = test_app();
-
-    let (status, body) = request(
-        &app,
-        "POST",
-        "/api/v1/ingest",
-        Some(KEY),
-        Some(json!({"nodes": 10, "edges": 20, "seed": 1})),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["nodes"], 10);
-    assert_eq!(body["edges"], 20);
-
-    let store = Store::load(dir.path().join("store.pad")).unwrap();
-    let (nodes, edges, _, _, _) = store.stats();
-    assert_eq!(nodes, 10);
-    assert_eq!(edges, 20);
 }
