@@ -111,6 +111,8 @@ impl Settings {
             || limits.request_burst == 0
             || limits.max_ingest_nodes == 0
             || limits.max_ingest_edges == 0
+            || limits.max_nodes_per_namespace == 0
+            || limits.max_edges_per_namespace == 0
             || limits.max_bfs_depth == 0
             || limits.max_vector_dimensions == 0
             || limits.max_vector_results == 0
@@ -207,6 +209,8 @@ pub struct LimitsConfig {
     pub request_burst: u32,
     pub max_ingest_nodes: usize,
     pub max_ingest_edges: usize,
+    pub max_nodes_per_namespace: usize,
+    pub max_edges_per_namespace: usize,
     pub max_bfs_depth: usize,
     pub max_vector_dimensions: usize,
     pub max_vector_results: usize,
@@ -222,6 +226,8 @@ impl Default for LimitsConfig {
             request_burst: 200,
             max_ingest_nodes: 100_000,
             max_ingest_edges: 500_000,
+            max_nodes_per_namespace: 1_000_000,
+            max_edges_per_namespace: 5_000_000,
             max_bfs_depth: 64,
             max_vector_dimensions: 4_096,
             max_vector_results: 1_000,
