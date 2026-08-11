@@ -44,7 +44,8 @@ pub use benchmark_gate::{
 pub use block::{Block, BlockKind, BlockPayload, FileHeader, MAGIC, VERSION};
 pub use checksum::{compute_checksum, validate_checksum};
 pub use contract::{
-    BatchMutationRequest, BatchMutationResponse, NodeQueryRequest, PageCursorResponse, API_VERSION,
+    AggregateRequest, AggregateResponse, BatchMutationRequest, BatchMutationResponse,
+    ExactLookupRequest, ExactLookupResponse, NodeQueryRequest, PageCursorResponse, API_VERSION,
 };
 pub use domain::{NodeKind, RelationKind, REQUIRED_NODE_KINDS, REQUIRED_RELATION_KINDS};
 pub use edge::Edge;
