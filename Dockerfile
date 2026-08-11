@@ -12,6 +12,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 COPY benches ./benches
 COPY tests ./tests
+COPY docs/openapi.json ./docs/openapi.json
 
 RUN cargo build --release
 
