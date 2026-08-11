@@ -1,11 +1,13 @@
 //! Tenant authorization and quota primitives.
 
 use crate::identity::NamespaceId;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fmt;
+use std::path::Path;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum Role {
     Reader,
     Writer,
@@ -51,7 +53,7 @@ pub struct AuthenticatedPrincipal {
 
 #[derive(Clone, Default)]
 pub struct CredentialRegistry {
-    credentials: HashMap<[u8; 32], Credential>,
+    pub(crate) credentials: HashMap<[u8; 32], Credential>,
 }
 
 impl CredentialRegistry {
@@ -75,6 +77,14 @@ impl CredentialRegistry {
                 credential.revoked = true;
                 true
             })
+    }
+
+    pub fn len(&self) -> usize {
+        self.credentials.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.credentials.is_empty()
     }
 
     pub fn authenticate(
@@ -219,6 +229,127 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 
 fn hash_token(token: &str) -> [u8; 32] {
     Sha256::digest(token.as_bytes()).into()
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct DurableCredential {
+    hash_hex: String,
+    namespace: NamespaceId,
+    role: Role,
+    revoked: bool,
+}
+
+impl CredentialRegistry {
+    fn to_durable(&self) -> Vec<DurableCredential> {
+        let mut records: Vec<DurableCredential> = self
+            .credentials
+            .values()
+            .map(|credential| DurableCredential {
+                hash_hex: hex_encode(&credential.token_hash),
+                namespace: credential.namespace.clone(),
+                role: credential.role,
+                revoked: credential.revoked,
+            })
+            .collect();
+        records.sort_by(|a, b| a.hash_hex.cmp(&b.hash_hex));
+        records
+    }
+
+    fn from_durable(records: Vec<DurableCredential>) -> Result<Self, String> {
+        let mut credentials = HashMap::new();
+        for record in records {
+            let hash = hex_decode(&record.hash_hex).ok_or_else(|| {
+                format!("invalid credential hash hex: {}", record.hash_hex)
+            })?;
+            if hash.len() != 32 {
+                return Err(format!("credential hash length must be 32 bytes: {}", record.hash_hex));
+            }
+            let mut token_hash = [0u8; 32];
+            token_hash.copy_from_slice(&hash);
+            credentials.insert(
+                token_hash,
+                Credential {
+                    token_hash,
+                    namespace: record.namespace,
+                    role: record.role,
+                    revoked: record.revoked,
+                },
+            );
+        }
+        Ok(Self { credentials })
+    }
+
+    /// Persist credentials durably with atomic replace and directory fsync.
+    pub fn save_to_path(&self, path: &Path) -> Result<(), String> {
+        let payload = serde_json::to_vec_pretty(&self.to_durable()).map_err(|e| e.to_string())?;
+        write_atomic(&payload, path).map_err(|e| e.to_string())
+    }
+
+    /// Load credentials from a durable JSON file.
+    pub fn load_from_path(path: &Path) -> Result<Self, String> {
+        let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+        let records: Vec<DurableCredential> =
+            serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+        Self::from_durable(records)
+    }
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        out.push(hex_char(b >> 4));
+        out.push(hex_char(b & 0x0f));
+    }
+    out
+}
+
+fn hex_char(nibble: u8) -> char {
+    match nibble {
+        0..=9 => (b'0' + nibble) as char,
+        10..=15 => (b'a' + (nibble - 10)) as char,
+        _ => unreachable!(),
+    }
+}
+
+fn hex_decode(hex: &str) -> Option<Vec<u8>> {
+    if hex.len() % 2 != 0 {
+        return None;
+    }
+    let mut bytes = Vec::with_capacity(hex.len() / 2);
+    let chars: Vec<char> = hex.chars().collect();
+    for i in (0..hex.len()).step_by(2) {
+        let hi = hex_value(chars[i])?;
+        let lo = hex_value(chars[i + 1])?;
+        bytes.push((hi << 4) | lo);
+    }
+    Some(bytes)
+}
+
+fn hex_value(c: char) -> Option<u8> {
+    match c {
+        '0'..='9' => Some((c as u8) - b'0'),
+        'a'..='f' => Some((c as u8) - b'a' + 10),
+        'A'..='F' => Some((c as u8) - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn write_atomic(bytes: &[u8], path: &Path) -> std::io::Result<()> {
+    use std::io::Write;
+    let temporary = path.with_extension(format!("credentials.tmp.{}", std::process::id()));
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)?;
+    file.write_all(bytes)?;
+    file.sync_all()?;
+    drop(file);
+    std::fs::rename(&temporary, path)?;
+    if let Some(parent) = path.parent() {
+        #[cfg(unix)]
+        std::fs::File::open(parent)?.sync_all()?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
