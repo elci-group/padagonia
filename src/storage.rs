@@ -228,11 +228,15 @@ impl Store {
         }
 
         // Check if migration is needed
-        if MigrationManager::needs_migration(&header) {
-            // For MVP, we reject old versions
+        let mut header = header;
+        if MigrationManager::needs_migration(&header)
+            && !MigrationManager::migrate(&mut reader, header.clone())?
+        {
             return Err(StoreError::BadHeader);
         }
-
+        if header.version < VERSION {
+            header.version = VERSION;
+        }
         if header.version != VERSION {
             return Err(StoreError::BadHeader);
         }

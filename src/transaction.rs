@@ -57,6 +57,10 @@ enum JournalRecord {
         transaction: Transaction,
         result: CommitResult,
     },
+    Receipt {
+        idempotency_key: String,
+        result: CommitResult,
+    },
 }
 
 #[derive(Debug)]
@@ -160,6 +164,22 @@ impl TransactionJournal {
                     prepared.remove(&transaction.idempotency_key);
                     committed.insert(transaction.idempotency_key.clone(), (transaction, result));
                 }
+                Some(JournalRecord::Receipt {
+                    idempotency_key,
+                    result,
+                }) => {
+                    sequence = sequence.max(result.sequence + 1);
+                    committed.insert(
+                        idempotency_key.clone(),
+                        (
+                            Transaction {
+                                idempotency_key,
+                                mutations: Vec::new(),
+                            },
+                            result,
+                        ),
+                    );
+                }
                 None => break,
             }
         }
@@ -252,10 +272,21 @@ impl TransactionJournal {
         let temporary = self
             .path
             .with_extension(format!("journal.tmp.{}", std::process::id()));
-        let replacement = OpenOptions::new()
+        let mut replacement = OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(&temporary)?;
+        let receipts: Vec<_> = self
+            .committed
+            .iter()
+            .map(|(key, (_, result))| JournalRecord::Receipt {
+                idempotency_key: key.clone(),
+                result: result.clone(),
+            })
+            .collect();
+        for receipt in receipts {
+            append_record(&mut replacement, &receipt)?;
+        }
         replacement.sync_all()?;
         std::fs::rename(&temporary, &self.path)?;
         if let Some(parent) = self.path.parent() {
@@ -265,8 +296,12 @@ impl TransactionJournal {
             .read(true)
             .append(true)
             .open(&self.path)?;
-        self.next_sequence = 0;
-        self.committed.clear();
+        self.next_sequence = self
+            .committed
+            .values()
+            .map(|(_, result)| result.sequence + 1)
+            .max()
+            .unwrap_or(0);
         self.prepared.clear();
         Ok(())
     }
@@ -502,5 +537,27 @@ mod tests {
         file.write_all(&[1, 2, 3]).unwrap();
         drop(file);
         assert!(TransactionJournal::open(&path).is_ok());
+    }
+
+    #[test]
+    fn checkpoint_compacts_mutations_but_preserves_idempotency_receipts() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("events.padj");
+        let namespace = NamespaceId::new("workspace").unwrap();
+        let transaction = Transaction {
+            idempotency_key: "compact-1".into(),
+            mutations: vec![node(namespace, "run-1")],
+        };
+        let mut store = Store::new();
+        let mut journal = TransactionJournal::open(&path).unwrap();
+        let result = journal.commit(&mut store, transaction.clone()).unwrap();
+        let before = std::fs::metadata(&path).unwrap().len();
+        journal.checkpoint().unwrap();
+        let after = std::fs::metadata(&path).unwrap().len();
+        assert!(after < before);
+        drop(journal);
+        let mut reopened = TransactionJournal::open(&path).unwrap();
+        assert_eq!(reopened.committed_result("compact-1"), Some(&result));
+        assert_eq!(reopened.commit(&mut store, transaction).unwrap(), result);
     }
 }

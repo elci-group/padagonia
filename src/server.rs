@@ -177,6 +177,12 @@ async fn persist(state: &AppState) -> ApiResult<()> {
     match tokio::task::spawn_blocking(move || save_store_to(&snapshot, &path)).await {
         Ok(Ok(())) => {
             metrics::counter!("padagonia_persist_total").increment(1);
+            state
+                .journal
+                .lock()
+                .await
+                .checkpoint()
+                .map_err(|error| internal_error(format!("journal checkpoint failed: {error}")))?;
             Ok(())
         }
         Ok(Err(error)) => {
@@ -237,7 +243,9 @@ async fn tombstone_handler(
     Json(request): Json<TombstoneRequest>,
 ) -> ApiResult<Json<serde_json::Value>> {
     if principal.namespace != request.namespace || !principal.role.permits(Operation::Administer) {
-        return Err(forbidden("only a namespace administrator may tombstone records"));
+        return Err(forbidden(
+            "only a namespace administrator may tombstone records",
+        ));
     }
     if request.external_id.trim().is_empty() || request.reason.trim().is_empty() {
         return Err(bad_request("external_id and reason must not be empty"));
@@ -261,12 +269,30 @@ async fn tombstone_handler(
         let bytes = serde_json::to_vec(&*lifecycle)
             .map_err(|error| internal_error(format!("lifecycle encode failed: {error}")))?;
         let path = state.data_path.with_extension("lifecycle");
-        tokio::task::spawn_blocking(move || std::fs::write(path, bytes))
+        tokio::task::spawn_blocking(move || save_lifecycle(&path, &bytes))
             .await
             .map_err(|error| internal_error(format!("lifecycle write task failed: {error}")))?
             .map_err(|error| internal_error(format!("lifecycle write failed: {error}")))?;
     }
     Ok(Json(serde_json::json!({"status": "tombstoned"})))
+}
+
+fn save_lifecycle(path: &FsPath, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let temporary = path.with_extension(format!("lifecycle.tmp.{}", std::process::id()));
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)?;
+    file.write_all(bytes)?;
+    file.sync_all()?;
+    drop(file);
+    std::fs::rename(&temporary, path)?;
+    if let Some(parent) = path.parent() {
+        #[cfg(unix)]
+        std::fs::File::open(parent)?.sync_all()?;
+    }
+    Ok(())
 }
 
 async fn transaction_handler(
@@ -288,7 +314,9 @@ async fn transaction_handler(
     }
     let namespace = request.namespace.clone();
     if principal.namespace != namespace || !principal.role.permits(Operation::Write) {
-        return Err(forbidden("credential is not authorized for this namespace or operation"));
+        return Err(forbidden(
+            "credential is not authorized for this namespace or operation",
+        ));
     }
     let transaction = request.into_transaction();
     let result = {

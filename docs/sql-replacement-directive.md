@@ -28,9 +28,10 @@ no-go, regardless of performance.
   temporary compatibility mechanism, not the tenant authorization model.
 - All mutation routes compile to the same transaction path. Synthetic ingest
   is a benchmark/admin adapter and cannot bypass the journal.
-- Lifecycle state is part of the durable snapshot and journal, not an
-  in-memory side registry. Tombstones are checked before replay and before
-  external-ID reuse.
+- Lifecycle state is a durable, namespace-scoped lifecycle sidecar in the
+  server recovery boundary, not an in-memory-only helper. Tombstone writes are
+  authenticated, serialized with the commit gate, and persisted before the
+  response; replay and external-ID reuse must consult the lifecycle boundary.
 - The benchmark harness fails closed on data loss, tenant leakage, nonzero
   error rates, or incomparable workloads; a faster but unsafe result is not a
   pass.

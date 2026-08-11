@@ -19,11 +19,16 @@ pub async fn auth_middleware(
     match auth_header {
         Some(value) => match (
             value.to_str(),
-            Some(namespace_header.and_then(|v| v.to_str().ok()).unwrap_or("default")),
+            Some(
+                namespace_header
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("default"),
+            ),
         ) {
             (Ok(header), Some(namespace_value)) if header.starts_with("Bearer ") => {
                 let token = &header["Bearer ".len()..];
-                let namespace = NamespaceId::new(namespace_value).map_err(|_| StatusCode::BAD_REQUEST)?;
+                let namespace =
+                    NamespaceId::new(namespace_value).map_err(|_| StatusCode::BAD_REQUEST)?;
                 let registry = state.credentials.read().await;
                 let principal = registry
                     .authenticate(token, &namespace)

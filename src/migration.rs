@@ -13,6 +13,22 @@ pub trait Migration {
     fn migrate<R: Read>(reader: &mut BufReader<R>, header: FileHeader) -> Result<bool>;
 }
 
+/// Compatibility migration for the v1 frame layout. v1 used the same framed
+/// MessagePack block payloads; only the header version was missing the
+/// explicit namespace/index contract. Loading it into the current in-memory
+/// model is therefore a safe header upgrade.
+struct V1ToCurrent;
+
+impl Migration for V1ToCurrent {
+    fn target_version() -> u8 {
+        VERSION
+    }
+
+    fn migrate<R: Read>(_reader: &mut BufReader<R>, _header: FileHeader) -> Result<bool> {
+        Ok(true)
+    }
+}
+
 /// No-op migration for current version.
 struct CurrentVersion;
 
@@ -38,18 +54,19 @@ impl MigrationManager {
 
     /// Apply the appropriate migration strategy.
     /// Returns true if migration was applied, false if not needed.
-    /// Currently only supports v2 (current), rejects older versions.
+    /// Supports the v1 framed layout and the current version.
     pub fn migrate<R: Read>(reader: &mut BufReader<R>, header: FileHeader) -> Result<bool> {
         // For MVP, we reject old versions. Future migrations will be added here.
         match header.version {
-            0 | 1 => Err(StoreError::BadHeader),
+            0 => Err(StoreError::BadHeader),
+            1 => V1ToCurrent::migrate(reader, header),
             _ => CurrentVersion::migrate(reader, header),
         }
     }
 
     /// Get supported version range.
     pub fn supported_versions() -> (u8, u8) {
-        (VERSION, VERSION) // Only current version is supported for MVP
+        (1, VERSION)
     }
 }
 
@@ -75,9 +92,9 @@ mod tests {
     }
 
     #[test]
-    fn supported_versions_returns_current_only() {
+    fn supported_versions_includes_v1_forward_migration() {
         let (min, max) = MigrationManager::supported_versions();
-        assert_eq!(min, VERSION);
+        assert_eq!(min, 1);
         assert_eq!(max, VERSION);
     }
 }

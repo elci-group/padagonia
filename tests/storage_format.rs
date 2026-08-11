@@ -22,7 +22,7 @@ fn saved_files_use_current_storage_version() {
 }
 
 #[test]
-fn old_storage_version_is_rejected() {
+fn v1_storage_version_is_forward_migrated() {
     let mut store = Store::new();
     generate_powerlaw(&mut store, 10, 20, 4);
 
@@ -37,11 +37,7 @@ fn old_storage_version_is_rejected() {
     rewritten.extend_from_slice(&bytes[rest_offset..]);
     fs::write(tmp.path(), rewritten).unwrap();
 
-    // Old versions are rejected by migration layer (MVP behavior)
-    assert!(matches!(
-        Store::load(tmp.path()),
-        Err(StoreError::BadHeader)
-    ));
+    assert!(Store::load(tmp.path()).is_ok());
 }
 
 #[test]

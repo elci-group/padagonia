@@ -110,6 +110,16 @@ path = "docs/openapi.json"
 required = true
 require_regex = ["openapi", "/api/v1/nodes", "/api/v1/vector-search"]
 
+[[file]]
+path = "docs/sql-replacement-directive.md"
+required = true
+require_regex = ["Closure rule", "journal checkpoint", "tenant", "lifecycle"]
+
+[[file]]
+path = "bench/competitors/benchmark_postgres.py"
+required = true
+require_regex = ["postgresql", "WITH RECURSIVE"]
+
 [[command]]
 name = "cargo test"
 cmd = ["cargo", "test"]

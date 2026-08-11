@@ -56,8 +56,7 @@ pub struct CredentialRegistry {
 
 impl CredentialRegistry {
     pub fn insert(&mut self, credential: Credential) {
-        self.credentials
-            .insert(credential.token_hash, credential);
+        self.credentials.insert(credential.token_hash, credential);
     }
 
     pub fn insert_token(&mut self, token: &str, namespace: NamespaceId, role: Role) {
@@ -70,10 +69,12 @@ impl CredentialRegistry {
     }
 
     pub fn revoke(&mut self, token: &str) -> bool {
-        self.credentials.get_mut(&hash_token(token)).is_some_and(|credential| {
-            credential.revoked = true;
-            true
-        })
+        self.credentials
+            .get_mut(&hash_token(token))
+            .is_some_and(|credential| {
+                credential.revoked = true;
+                true
+            })
     }
 
     pub fn authenticate(
