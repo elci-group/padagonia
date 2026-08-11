@@ -21,7 +21,10 @@
 /bench
 
 # Documentation website assets (not needed for the build)
-/docs
+# Keep docs/openapi.json in the build context: the HTTP server embeds it at
+# compile time. Other documentation is not needed for the image.
+/docs/*
+!/docs/openapi.json
 
 # Docker files themselves
 Dockerfile
