@@ -120,6 +120,13 @@
         "responses": {"200": {"description": "Nearest nodes and distances"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}}
       }
     },
+    "/api/v1/query/nodes": {
+      "post": {
+        "security": [{"bearerAuth": []}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["namespace", "limit"], "properties": {"namespace": {"type": "string"}, "label": {"type": "integer", "minimum": 0}, "created_after": {"type": "integer", "minimum": 0}, "created_before": {"type": "integer", "minimum": 0}, "limit": {"type": "integer", "minimum": 1, "maximum": 10000}, "cursor": {"type": "string"}}}}}},
+        "responses": {"200": {"description": "Namespace-scoped cursor page of node ids"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}}
+      }
+    },
     "/api/v1/transactions": {
       "post": {
         "security": [{"bearerAuth": []}],

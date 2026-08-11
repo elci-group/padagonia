@@ -155,20 +155,22 @@ correlation.
 | Endpoint        | Method | Description                              |
 |-----------------|--------|------------------------------------------|
 | `/api/v1/stats` | GET    | Returns node/edge/fact/label/relation counts |
-| `/api/v1/ingest`| POST   | Generates a synthetic graph in memory      |
+| `/api/v1/ingest`| POST   | Bounded benchmark/admin synthetic ingest; production mutations use the journal |
+| `/api/v1/query/nodes` | POST | Namespace-scoped cursor pagination |
 
 The exact route and schema contract is available at public
 `GET /openapi.json` and checked in as [openapi.json](openapi.json).
 
 ## Durability, snapshots, and restore
 
-Each successful mutation clones a consistent in-memory view and persists it off
-the async executor before acknowledging the request. Saves write a unique
-same-directory temporary file, flush and `fsync` it, atomically rename it over
-the destination, and sync the parent directory on Unix. A torn write therefore
-does not truncate the previous complete graph. This is single-file durability,
-not a multi-operation transaction, WAL, replication protocol, or rollback
-protection.
+Each successful mutation is committed to the append-only transaction journal,
+then a consistent snapshot is written off the async executor before the request
+is acknowledged. Startup replays only journal records absent from the loaded
+snapshot, including the crash window after journal commit and before snapshot
+replacement. Saves write a unique same-directory temporary file, flush and
+`fsync` it, atomically rename it over the destination, and sync the parent
+directory on Unix. The journal is the acknowledged-write boundary; snapshot
+shipping remains the backup mechanism and replication is not yet provided.
 
 Create a validated snapshot without replacing an existing file:
 
@@ -216,7 +218,8 @@ not per credential or source address.
 
 ## Security notes
 
-- Replace the default `api_key` before exposing PADAGONIA to a network.
+- Replace the bootstrap `api_key` before exposing PADAGONIA to a network and
+  issue tenant-scoped credentials through the Dreamsequence control plane.
 - Run the container as the provided unprivileged `padagonia` user.
 - Bind the server to `0.0.0.0` only when running inside a container or behind a
   reverse proxy; use `127.0.0.1` for local development.

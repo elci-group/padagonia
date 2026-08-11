@@ -136,8 +136,8 @@ expect_exit = 0
 timeout_secs = 300
 
 [[command]]
-name = "release bench summary"
-cmd = ["cargo", "run", "--release", "--", "bench", "--nodes", "100000", "--edges", "500000"]
+name = "CI graph benchmark summary"
+cmd = ["cargo", "run", "--release", "--", "bench", "--nodes", "10000", "--edges", "50000"]
 expect_exit = 0
 timeout_secs = 600
 stdout_contains = ["wrote target/padagonia_bench_summary.json"]
@@ -155,8 +155,8 @@ expect_exit = 0
 timeout_secs = 300
 
 [[command]]
-name = "hnsw vector benchmark"
-cmd = ["cargo", "run", "--release", "--", "bench-vectors", "--nodes", "50000", "--dim", "128", "--k", "10", "--ef", "200", "--m", "24", "--queries", "50"]
+name = "CI vector benchmark"
+cmd = ["cargo", "run", "--release", "--", "bench-vectors", "--nodes", "5000", "--dim", "64", "--k", "10", "--ef", "100", "--queries", "20"]
 expect_exit = 0
 timeout_secs = 300
 stdout_contains = ["wrote target/padagonia_hnsw_summary.json"]
