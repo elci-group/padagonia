@@ -169,6 +169,32 @@ fn save_store_to(store: &Store, path: &FsPath) -> crate::storage::Result<()> {
     store.save(path)
 }
 
+fn enforce_namespace_quota(
+    store: &Store,
+    namespace: &crate::identity::NamespaceId,
+    add_nodes: usize,
+    add_edges: usize,
+    limits: &crate::app_config::LimitsConfig,
+) -> ApiResult<()> {
+    let nodes = store
+        .nodes()
+        .values()
+        .filter(|node| &node.namespace == namespace)
+        .count();
+    let edges = store
+        .edges()
+        .values()
+        .filter(|edge| &edge.namespace == namespace)
+        .count();
+    if nodes.saturating_add(add_nodes) > limits.max_nodes_per_namespace {
+        return Err(bad_request("namespace node quota exceeded"));
+    }
+    if edges.saturating_add(add_edges) > limits.max_edges_per_namespace {
+        return Err(bad_request("namespace edge quota exceeded"));
+    }
+    Ok(())
+}
+
 /// Write-through persistence after a mutation: snapshot under a read lock,
 /// serialize off the async runtime so large stores do not block it.
 async fn persist(state: &AppState) -> ApiResult<()> {
@@ -325,6 +351,13 @@ async fn transaction_handler(
     let transaction = request.into_transaction();
     let result = {
         let mut store = state.store.write().await;
+        let (add_nodes, add_edges) = transaction.mutations.iter().fold((0, 0), |(nodes, edges), mutation| {
+            match mutation {
+                crate::transaction::Mutation::AddNode { .. } => (nodes + 1, edges),
+                crate::transaction::Mutation::AddEdge { .. } => (nodes, edges + 1),
+            }
+        });
+        enforce_namespace_quota(&store, &namespace, add_nodes, add_edges, &state.limits)?;
         let mut journal = state.journal.lock().await;
         let replay = journal
             .committed_result(&transaction.idempotency_key)
@@ -436,6 +469,7 @@ async fn create_node_handler(
         .into_iter()
         .map(|(key, value)| (key.to_owned(), value))
         .collect();
+    let namespace = req.namespace.clone();
     let id = {
         let store = state.store.read().await;
         if let (Some(expected), Some(actual)) = (
@@ -461,6 +495,13 @@ async fn create_node_handler(
             }],
         };
         let mut store = state.store.write().await;
+        enforce_namespace_quota(
+            &store,
+            &namespace,
+            1,
+            0,
+            &state.limits,
+        )?;
         let mut journal = state.journal.lock().await;
         journal
             .commit(&mut store, transaction)
@@ -547,6 +588,13 @@ async fn create_edge_handler(
         .collect();
     let id = {
         let mut store = state.store.write().await;
+        enforce_namespace_quota(
+            &store,
+            &req.namespace,
+            0,
+            1,
+            &state.limits,
+        )?;
         let mut journal = state.journal.lock().await;
         journal
             .commit(
