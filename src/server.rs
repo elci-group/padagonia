@@ -361,7 +361,9 @@ async fn ingest_handler(
 ) -> ApiResult<Json<StatsResponse>> {
     let _commit_guard = state.commit_gate.lock().await;
     if !principal.role.permits(Operation::Administer) {
-        return Err(forbidden("synthetic ingest is restricted to administrators"));
+        return Err(forbidden(
+            "synthetic ingest is restricted to administrators",
+        ));
     }
     if req.nodes > state.limits.max_ingest_nodes {
         return Err(bad_request(format!(
@@ -407,7 +409,9 @@ async fn create_node_handler(
 ) -> ApiResult<(StatusCode, Json<IdResponse>)> {
     let _commit_guard = state.commit_gate.lock().await;
     if principal.namespace != req.namespace || !principal.role.permits(Operation::Write) {
-        return Err(forbidden("credential is not authorized for this namespace or operation"));
+        return Err(forbidden(
+            "credential is not authorized for this namespace or operation",
+        ));
     }
     validate_label(&req.label)?;
     validate_properties(&req.properties)?;
@@ -474,6 +478,7 @@ async fn create_node_handler(
 
 async fn get_node_handler(
     State(state): State<AppState>,
+    Extension(principal): Extension<AuthenticatedPrincipal>,
     Path(id): Path<u64>,
 ) -> ApiResult<Json<NodeResponse>> {
     let store = state.store.read().await;
@@ -481,6 +486,9 @@ async fn get_node_handler(
         .nodes()
         .get(&NodeId(id))
         .ok_or_else(|| not_found(format!("node {id} not found")))?;
+    if node.namespace != principal.namespace || !principal.role.permits(Operation::Read) {
+        return Err(forbidden("credential is not authorized for this namespace"));
+    }
     Ok(Json(NodeResponse {
         id: node.id.0,
         label: store
@@ -501,7 +509,9 @@ async fn create_edge_handler(
 ) -> ApiResult<(StatusCode, Json<IdResponse>)> {
     let _commit_guard = state.commit_gate.lock().await;
     if principal.namespace != req.namespace || !principal.role.permits(Operation::Write) {
-        return Err(forbidden("credential is not authorized for this namespace or operation"));
+        return Err(forbidden(
+            "credential is not authorized for this namespace or operation",
+        ));
     }
     validate_label(&req.label)?;
     validate_properties(&req.properties)?;
