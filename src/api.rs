@@ -24,13 +24,6 @@ pub(crate) struct IdResponse {
 }
 
 #[derive(Deserialize)]
-pub(crate) struct IngestRequest {
-    pub(crate) nodes: usize,
-    pub(crate) edges: usize,
-    pub(crate) seed: u64,
-}
-
-#[derive(Deserialize)]
 pub(crate) struct ProvenanceInput {
     agent: String,
     model: String,
