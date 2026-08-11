@@ -5,7 +5,6 @@ use crate::api::*;
 use crate::app_config::Settings;
 use crate::auth::auth_middleware;
 use crate::authorization::{AuthenticatedPrincipal, Operation};
-use crate::bench_support::generate_powerlaw;
 use crate::contract::{BatchMutationRequest, BatchMutationResponse, API_VERSION};
 use crate::hnsw::{Distance, HnswParams};
 use crate::http_error::{bad_request, forbidden, internal_error, not_found, ApiResult};
@@ -41,7 +40,6 @@ pub fn router(state: AppState, metrics_path: &str) -> Router {
 
     let api_routes = Router::new()
         .route("/stats", get(stats_handler))
-        .route("/ingest", post(ingest_handler))
         .route("/nodes", post(create_node_handler))
         .route("/nodes/:id", get(get_node_handler))
         .route("/edges", post(create_edge_handler))
@@ -386,54 +384,6 @@ async fn transaction_handler(
     Ok(Json(BatchMutationResponse {
         api_version: API_VERSION.to_string(),
         result: result.0,
-    }))
-}
-
-async fn ingest_handler(
-    State(state): State<AppState>,
-    Extension(principal): Extension<AuthenticatedPrincipal>,
-    Json(req): Json<IngestRequest>,
-) -> ApiResult<Json<StatsResponse>> {
-    let _commit_guard = state.commit_gate.lock().await;
-    if !principal.role.permits(Operation::Administer) {
-        return Err(forbidden(
-            "synthetic ingest is restricted to administrators",
-        ));
-    }
-    if req.nodes > state.limits.max_ingest_nodes {
-        return Err(bad_request(format!(
-            "nodes exceeds configured limit {}",
-            state.limits.max_ingest_nodes
-        )));
-    }
-    if req.edges > state.limits.max_ingest_edges {
-        return Err(bad_request(format!(
-            "edges exceeds configured limit {}",
-            state.limits.max_ingest_edges
-        )));
-    }
-    if req.nodes == 0 && req.edges != 0 {
-        return Err(bad_request("edges require at least one node"));
-    }
-    let (nodes, edges, facts, labels, relations) = {
-        let mut store = state.store.write().await;
-        generate_powerlaw(&mut store, req.nodes, req.edges, req.seed);
-        store.stats()
-    };
-    persist(&state).await?;
-    tracing::info!(
-        event = "graph_ingested",
-        nodes = req.nodes,
-        edges = req.edges,
-        seed = req.seed,
-        "synthetic graph persisted"
-    );
-    Ok(Json(StatsResponse {
-        nodes,
-        edges,
-        facts,
-        labels,
-        relations,
     }))
 }
 
