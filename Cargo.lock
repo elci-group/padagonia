@@ -1063,7 +1063,7 @@ dependencies = [
 
 [[package]]
 name = "padagonia"
-version = "0.1.38"
+version = "0.1.39"
 dependencies = [
  "ahash",
  "axum",

@@ -3,10 +3,12 @@
 use crate::app_config::LimitsConfig;
 use crate::authorization::{CredentialRegistry, Role};
 use crate::identity::NamespaceId;
+use crate::lifecycle::LifecycleRegistry;
 use crate::outbox::PersistentOutbox;
 use crate::store::Store;
 use crate::transaction::TransactionJournal;
 use metrics_exporter_prometheus::PrometheusHandle;
+use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
@@ -17,6 +19,7 @@ pub struct AppState {
     pub(crate) store: Arc<RwLock<Store>>,
     pub(crate) metrics_handle: PrometheusHandle,
     pub(crate) credentials: Arc<tokio::sync::RwLock<CredentialRegistry>>,
+    pub(crate) lifecycle: Arc<RwLock<LifecycleRegistry>>,
     pub(crate) data_path: Arc<PathBuf>,
     pub(crate) hnsw: (usize, usize, usize),
     pub(crate) limits: LimitsConfig,
@@ -82,10 +85,18 @@ impl AppState {
         // The configured key is retained as a bootstrap administrator. New
         // tenants must use scoped credentials issued by the control plane.
         credentials.insert_token(&api_key, NamespaceId::default(), Role::Administrator);
+        let lifecycle_path = data_path.with_extension("lifecycle");
+        let lifecycle = if lifecycle_path.is_file() {
+            let bytes = fs::read(&lifecycle_path).map_err(|error| error.to_string())?;
+            serde_json::from_slice(&bytes).map_err(|error| error.to_string())?
+        } else {
+            LifecycleRegistry::default()
+        };
         Ok(Self {
             store: Arc::new(RwLock::new(store)),
             metrics_handle,
             credentials: Arc::new(RwLock::new(credentials)),
+            lifecycle: Arc::new(RwLock::new(lifecycle)),
             data_path: Arc::new(data_path),
             hnsw,
             limits,
