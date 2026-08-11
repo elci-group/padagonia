@@ -156,7 +156,6 @@ correlation.
 | Endpoint        | Method | Description                              |
 |-----------------|--------|------------------------------------------|
 | `/api/v1/stats` | GET    | Returns node/edge/fact/label/relation counts |
-| `/api/v1/ingest`| POST   | Bounded benchmark/admin synthetic ingest; production mutations use the journal |
 | `/api/v1/query/nodes` | POST | Namespace-scoped cursor pagination |
 
 The exact route and schema contract is available at public
