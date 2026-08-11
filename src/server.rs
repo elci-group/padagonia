@@ -351,12 +351,14 @@ async fn transaction_handler(
     let transaction = request.into_transaction();
     let result = {
         let mut store = state.store.write().await;
-        let (add_nodes, add_edges) = transaction.mutations.iter().fold((0, 0), |(nodes, edges), mutation| {
-            match mutation {
-                crate::transaction::Mutation::AddNode { .. } => (nodes + 1, edges),
-                crate::transaction::Mutation::AddEdge { .. } => (nodes, edges + 1),
-            }
-        });
+        let (add_nodes, add_edges) =
+            transaction
+                .mutations
+                .iter()
+                .fold((0, 0), |(nodes, edges), mutation| match mutation {
+                    crate::transaction::Mutation::AddNode { .. } => (nodes + 1, edges),
+                    crate::transaction::Mutation::AddEdge { .. } => (nodes, edges + 1),
+                });
         enforce_namespace_quota(&store, &namespace, add_nodes, add_edges, &state.limits)?;
         let mut journal = state.journal.lock().await;
         let replay = journal
@@ -495,13 +497,7 @@ async fn create_node_handler(
             }],
         };
         let mut store = state.store.write().await;
-        enforce_namespace_quota(
-            &store,
-            &namespace,
-            1,
-            0,
-            &state.limits,
-        )?;
+        enforce_namespace_quota(&store, &namespace, 1, 0, &state.limits)?;
         let mut journal = state.journal.lock().await;
         journal
             .commit(&mut store, transaction)
@@ -588,13 +584,7 @@ async fn create_edge_handler(
         .collect();
     let id = {
         let mut store = state.store.write().await;
-        enforce_namespace_quota(
-            &store,
-            &req.namespace,
-            0,
-            1,
-            &state.limits,
-        )?;
+        enforce_namespace_quota(&store, &req.namespace, 0, 1, &state.limits)?;
         let mut journal = state.journal.lock().await;
         journal
             .commit(
