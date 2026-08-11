@@ -31,11 +31,11 @@ pub enum LifecycleError {
     SelfSupersession,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct LifecycleRegistry {
-    tombstones: HashMap<RecordKey, Tombstone>,
-    retractions: HashSet<RecordKey>,
-    superseded_by: HashMap<RecordKey, RecordKey>,
+    pub(crate) tombstones: HashMap<RecordKey, Tombstone>,
+    pub(crate) retractions: HashSet<RecordKey>,
+    pub(crate) superseded_by: HashMap<RecordKey, RecordKey>,
 }
 
 impl LifecycleRegistry {
