@@ -111,7 +111,18 @@ async fn versioned_transaction_route_is_namespace_bound_and_idempotent() {
     assert_eq!(response.status(), StatusCode::OK);
     let response = app.clone().oneshot(tx_request("workspace")).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    let (_, stats) = request(&app, "GET", "/api/v1/stats", Some(KEY), None).await;
+    // stats is now namespace-scoped; request with workspace namespace to see the node
+    let stats_request = Request::builder()
+        .method("GET")
+        .uri("/api/v1/stats")
+        .header("authorization", format!("Bearer {KEY}"))
+        .header("x-padagonia-namespace", "workspace")
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(stats_request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let stats: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(stats["nodes"], 1);
 }
 
