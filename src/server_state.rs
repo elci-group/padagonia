@@ -1,6 +1,8 @@
 //! Shared HTTP state and process-wide request-rate governance.
 
 use crate::app_config::LimitsConfig;
+use crate::authorization::{CredentialRegistry, Role};
+use crate::identity::NamespaceId;
 use crate::outbox::PersistentOutbox;
 use crate::store::Store;
 use crate::transaction::TransactionJournal;
@@ -15,6 +17,7 @@ pub struct AppState {
     pub(crate) store: Arc<RwLock<Store>>,
     pub(crate) metrics_handle: PrometheusHandle,
     pub(crate) api_key: Arc<str>,
+    pub(crate) credentials: Arc<tokio::sync::RwLock<CredentialRegistry>>,
     pub(crate) data_path: Arc<PathBuf>,
     pub(crate) hnsw: (usize, usize, usize),
     pub(crate) limits: LimitsConfig,
@@ -64,6 +67,7 @@ impl AppState {
         hnsw: (usize, usize, usize),
         limits: LimitsConfig,
     ) -> Result<Self, String> {
+        let api_key = api_key.into();
         let rate_limiter = RateLimiter::new(limits.requests_per_second, limits.request_burst);
         let journal_path = data_path.with_extension("journal");
         let journal = TransactionJournal::open(journal_path).map_err(|error| error.to_string())?;
@@ -75,10 +79,15 @@ impl AppState {
         journal
             .replay_missing(&mut store)
             .map_err(|error| error.to_string())?;
+        let mut credentials = CredentialRegistry::default();
+        // The configured key is retained as a bootstrap administrator. New
+        // tenants must use scoped credentials issued by the control plane.
+        credentials.insert_token(&api_key, NamespaceId::default(), Role::Administrator);
         Ok(Self {
             store: Arc::new(RwLock::new(store)),
             metrics_handle,
-            api_key: Arc::from(api_key.into().into_boxed_str()),
+            api_key: Arc::from(api_key.into_boxed_str()),
+            credentials: Arc::new(RwLock::new(credentials)),
             data_path: Arc::new(data_path),
             hnsw,
             limits,
