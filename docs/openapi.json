@@ -127,6 +127,13 @@
         "responses": {"200": {"description": "Namespace-scoped cursor page of node ids"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}}
       }
     },
+    "/api/v1/lifecycle/tombstone": {
+      "post": {
+        "security": [{"bearerAuth": []}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["namespace", "external_id", "reason", "schema_version"]}}}},
+        "responses": {"200": {"description": "Durable tombstone recorded"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"description": "Administrator required"}}
+      }
+    },
     "/api/v1/transactions": {
       "post": {
         "security": [{"bearerAuth": []}],

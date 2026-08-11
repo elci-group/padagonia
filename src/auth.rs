@@ -67,27 +67,3 @@ pub fn principal(request: &Request) -> Result<&AuthenticatedPrincipal, StatusCod
         .get::<AuthenticatedPrincipal>()
         .ok_or(StatusCode::UNAUTHORIZED)
 }
-
-/// Constant-time comparison for API keys to prevent timing attacks.
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    a.iter()
-        .zip(b.iter())
-        .fold(0_u8, |acc, (x, y)| acc | (x ^ y))
-        == 0
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn constant_time_eq_matches_only_identical_inputs() {
-        assert!(constant_time_eq(b"Bearer s3cret", b"Bearer s3cret"));
-        assert!(!constant_time_eq(b"Bearer s3cret", b"Bearer s3creX"));
-        assert!(!constant_time_eq(b"Bearer s3cret", b"Bearer"));
-        assert!(!constant_time_eq(b"", b"Bearer "));
-    }
-}

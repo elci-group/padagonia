@@ -45,3 +45,12 @@ pub fn unauthorized(message: impl Into<String>) -> (StatusCode, Json<ErrorRespon
         }),
     )
 }
+
+pub fn forbidden(message: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::FORBIDDEN,
+        Json(ErrorResponse {
+            error: message.into(),
+        }),
+    )
+}

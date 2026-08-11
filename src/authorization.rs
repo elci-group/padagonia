@@ -1,6 +1,7 @@
 //! Tenant authorization and quota primitives.
 
 use crate::identity::NamespaceId;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -36,7 +37,7 @@ impl Role {
 
 #[derive(Clone, Debug)]
 pub struct Credential {
-    pub token: String,
+    pub token_hash: [u8; 32],
     pub namespace: NamespaceId,
     pub role: Role,
     pub revoked: bool,
@@ -48,19 +49,28 @@ pub struct AuthenticatedPrincipal {
     pub role: Role,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct CredentialRegistry {
-    credentials: HashMap<String, Credential>,
+    credentials: HashMap<[u8; 32], Credential>,
 }
 
 impl CredentialRegistry {
     pub fn insert(&mut self, credential: Credential) {
         self.credentials
-            .insert(credential.token.clone(), credential);
+            .insert(credential.token_hash, credential);
+    }
+
+    pub fn insert_token(&mut self, token: &str, namespace: NamespaceId, role: Role) {
+        self.insert(Credential {
+            token_hash: hash_token(token),
+            namespace,
+            role,
+            revoked: false,
+        });
     }
 
     pub fn revoke(&mut self, token: &str) -> bool {
-        self.credentials.get_mut(token).is_some_and(|credential| {
+        self.credentials.get_mut(&hash_token(token)).is_some_and(|credential| {
             credential.revoked = true;
             true
         })
@@ -71,12 +81,17 @@ impl CredentialRegistry {
         token: &str,
         namespace: &NamespaceId,
     ) -> Option<AuthenticatedPrincipal> {
+        let token_hash = hash_token(token);
         self.credentials.values().find_map(|credential| {
-            (constant_time_eq(credential.token.as_bytes(), token.as_bytes())
+            (constant_time_eq(&credential.token_hash, &token_hash)
                 && !credential.revoked
-                && &credential.namespace == namespace)
+                && (&credential.namespace == namespace || credential.role == Role::Administrator))
                 .then_some(AuthenticatedPrincipal {
-                    namespace: credential.namespace.clone(),
+                    namespace: if credential.role == Role::Administrator {
+                        namespace.clone()
+                    } else {
+                        credential.namespace.clone()
+                    },
                     role: credential.role,
                 })
         })
@@ -201,6 +216,10 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     diff == 0
 }
 
+fn hash_token(token: &str) -> [u8; 32] {
+    Sha256::digest(token.as_bytes()).into()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -208,12 +227,7 @@ mod tests {
     fn revocation_and_roles_are_enforced() {
         let namespace = NamespaceId::new("workspace").unwrap();
         let mut registry = CredentialRegistry::default();
-        registry.insert(Credential {
-            token: "secret-token".into(),
-            namespace: namespace.clone(),
-            role: Role::Writer,
-            revoked: false,
-        });
+        registry.insert_token("secret-token", namespace.clone(), Role::Writer);
         assert!(registry
             .authorize("secret-token", &namespace, Operation::Write)
             .is_ok());
