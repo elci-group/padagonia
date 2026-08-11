@@ -471,11 +471,7 @@ async fn aggregate_handler(
         agg
     };
     // Also demonstrate engine usage for equivalence check in debug; not returned.
-    let _engine_agg = engine.aggregate_numeric_property(
-        Some(&request.namespace),
-        label_id,
-        key_id,
-    );
+    let _engine_agg = engine.aggregate_numeric_property(Some(&request.namespace), label_id, key_id);
     Ok(Json(crate::contract::AggregateResponse {
         api_version: API_VERSION.to_string(),
         count: aggregate.count,
@@ -573,10 +569,14 @@ async fn transaction_handler(
         for mutation in &transaction.mutations {
             let key = match mutation {
                 crate::transaction::Mutation::AddNode {
-                    namespace, external_id, ..
+                    namespace,
+                    external_id,
+                    ..
                 }
                 | crate::transaction::Mutation::AddEdge {
-                    namespace, external_id, ..
+                    namespace,
+                    external_id,
+                    ..
                 } => RecordKey {
                     namespace: namespace.clone(),
                     external_id: external_id.clone(),
