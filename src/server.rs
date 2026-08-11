@@ -4,10 +4,11 @@
 use crate::api::*;
 use crate::app_config::Settings;
 use crate::auth::auth_middleware;
+use crate::authorization::{AuthenticatedPrincipal, Operation};
 use crate::bench_support::generate_powerlaw;
 use crate::contract::{BatchMutationRequest, BatchMutationResponse, API_VERSION};
 use crate::hnsw::{Distance, HnswParams};
-use crate::http_error::{bad_request, internal_error, not_found, ApiResult};
+use crate::http_error::{bad_request, forbidden, internal_error, not_found, ApiResult};
 use crate::id::NodeId;
 use crate::metrics::get_metrics_handle;
 use crate::ontology::StringTableExt;
@@ -16,7 +17,7 @@ use crate::query::QueryEngine;
 use crate::server_middleware::{normalize_error_responses, rate_limit_middleware, request_context};
 use crate::store::Store;
 use axum::{
-    extract::{DefaultBodyLimit, Path, State},
+    extract::{DefaultBodyLimit, Extension, Path, State},
     http::{header, StatusCode},
     response::IntoResponse,
     routing::{get, post},
@@ -48,7 +49,7 @@ pub fn router(state: AppState, metrics_path: &str) -> Router {
         .route("/transactions", post(transaction_handler))
         .route("/query/nodes", post(query_nodes_handler))
         .route_layer(axum::middleware::from_fn_with_state(
-            state.api_key.clone(),
+            state.clone(),
             auth_middleware,
         ))
         .route_layer(axum::middleware::from_fn_with_state(
@@ -230,6 +231,7 @@ async fn query_nodes_handler(
 
 async fn transaction_handler(
     State(state): State<AppState>,
+    Extension(principal): Extension<AuthenticatedPrincipal>,
     headers: axum::http::HeaderMap,
     Json(request): Json<BatchMutationRequest>,
 ) -> ApiResult<Json<BatchMutationResponse>> {
@@ -245,6 +247,9 @@ async fn transaction_handler(
         ));
     }
     let namespace = request.namespace.clone();
+    if principal.namespace != namespace || !principal.role.permits(Operation::Write) {
+        return Err(forbidden("credential is not authorized for this namespace or operation"));
+    }
     let transaction = request.into_transaction();
     let result = {
         let mut store = state.store.write().await;
