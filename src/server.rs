@@ -10,6 +10,7 @@ use crate::contract::{BatchMutationRequest, BatchMutationResponse, API_VERSION};
 use crate::hnsw::{Distance, HnswParams};
 use crate::http_error::{bad_request, forbidden, internal_error, not_found, ApiResult};
 use crate::id::NodeId;
+use crate::lifecycle::{RecordKey, Tombstone};
 use crate::metrics::get_metrics_handle;
 use crate::ontology::StringTableExt;
 use crate::projection::props_to_json;
@@ -48,6 +49,7 @@ pub fn router(state: AppState, metrics_path: &str) -> Router {
         .route("/vector-search", post(vector_search_handler))
         .route("/transactions", post(transaction_handler))
         .route("/query/nodes", post(query_nodes_handler))
+        .route("/lifecycle/tombstone", post(tombstone_handler))
         .route_layer(axum::middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,
@@ -227,6 +229,44 @@ async fn query_nodes_handler(
         node_ids: page.entries.into_iter().map(|node| node.id.0).collect(),
         next_cursor: page.next_cursor,
     })
+}
+
+async fn tombstone_handler(
+    State(state): State<AppState>,
+    Extension(principal): Extension<AuthenticatedPrincipal>,
+    Json(request): Json<TombstoneRequest>,
+) -> ApiResult<Json<serde_json::Value>> {
+    if principal.namespace != request.namespace || !principal.role.permits(Operation::Administer) {
+        return Err(forbidden("only a namespace administrator may tombstone records"));
+    }
+    if request.external_id.trim().is_empty() || request.reason.trim().is_empty() {
+        return Err(bad_request("external_id and reason must not be empty"));
+    }
+    let _commit_guard = state.commit_gate.lock().await;
+    {
+        let mut lifecycle = state.lifecycle.write().await;
+        lifecycle
+            .tombstone(Tombstone {
+                key: RecordKey {
+                    namespace: request.namespace,
+                    external_id: request.external_id,
+                },
+                deleted_at: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |duration| duration.as_secs()),
+                reason: request.reason,
+                schema_version: request.schema_version,
+            })
+            .map_err(|error| bad_request(format!("invalid tombstone: {error:?}")))?;
+        let bytes = serde_json::to_vec(&*lifecycle)
+            .map_err(|error| internal_error(format!("lifecycle encode failed: {error}")))?;
+        let path = state.data_path.with_extension("lifecycle");
+        tokio::task::spawn_blocking(move || std::fs::write(path, bytes))
+            .await
+            .map_err(|error| internal_error(format!("lifecycle write task failed: {error}")))?
+            .map_err(|error| internal_error(format!("lifecycle write failed: {error}")))?;
+    }
+    Ok(Json(serde_json::json!({"status": "tombstoned"})))
 }
 
 async fn transaction_handler(

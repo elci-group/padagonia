@@ -223,6 +223,14 @@ pub(crate) struct VectorHit {
     pub(crate) distance: f32,
 }
 
+#[derive(Deserialize)]
+pub(crate) struct TombstoneRequest {
+    pub(crate) namespace: crate::identity::NamespaceId,
+    pub(crate) external_id: String,
+    pub(crate) reason: String,
+    pub(crate) schema_version: u16,
+}
+
 #[derive(Serialize)]
 pub(crate) struct NodeResponse {
     pub(crate) id: u64,
