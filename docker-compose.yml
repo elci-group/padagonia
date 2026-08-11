@@ -6,7 +6,8 @@ services:
     image: padagonia:latest
     container_name: padagonia
     ports:
-      - "7373:7373"
+      # Keep Padagonia private; expose it through an HTTPS reverse proxy.
+      - "127.0.0.1:7373:7373"
     volumes:
       # Mount the host-side Docker config into the container.
       - ./padagonia.docker.toml:/etc/padagonia/padagonia.toml:ro
