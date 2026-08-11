@@ -226,15 +226,19 @@ async fn stats_handler(State(state): State<AppState>) -> Json<StatsResponse> {
 
 async fn query_nodes_handler(
     State(state): State<AppState>,
+    Extension(principal): Extension<AuthenticatedPrincipal>,
     Json(request): Json<crate::contract::NodeQueryRequest>,
-) -> Json<crate::contract::PageCursorResponse> {
+) -> ApiResult<Json<crate::contract::PageCursorResponse>> {
+    if principal.namespace != request.namespace || !principal.role.permits(Operation::Read) {
+        return Err(forbidden("credential is not authorized for this namespace"));
+    }
     let store = state.store.read().await;
     let page = QueryEngine::new(&store).nodes_page(&request.clone().into_query());
-    Json(crate::contract::PageCursorResponse {
+    Ok(Json(crate::contract::PageCursorResponse {
         api_version: API_VERSION.to_string(),
         node_ids: page.entries.into_iter().map(|node| node.id.0).collect(),
         next_cursor: page.next_cursor,
-    })
+    }))
 }
 
 async fn tombstone_handler(
