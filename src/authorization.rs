@@ -258,11 +258,13 @@ impl CredentialRegistry {
     fn from_durable(records: Vec<DurableCredential>) -> Result<Self, String> {
         let mut credentials = HashMap::new();
         for record in records {
-            let hash = hex_decode(&record.hash_hex).ok_or_else(|| {
-                format!("invalid credential hash hex: {}", record.hash_hex)
-            })?;
+            let hash = hex_decode(&record.hash_hex)
+                .ok_or_else(|| format!("invalid credential hash hex: {}", record.hash_hex))?;
             if hash.len() != 32 {
-                return Err(format!("credential hash length must be 32 bytes: {}", record.hash_hex));
+                return Err(format!(
+                    "credential hash length must be 32 bytes: {}",
+                    record.hash_hex
+                ));
             }
             let mut token_hash = [0u8; 32];
             token_hash.copy_from_slice(&hash);

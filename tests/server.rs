@@ -121,7 +121,9 @@ async fn versioned_transaction_route_is_namespace_bound_and_idempotent() {
         .unwrap();
     let response = app.clone().oneshot(stats_request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let stats: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(stats["nodes"], 1);
 }
