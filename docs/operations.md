@@ -73,6 +73,7 @@ Key settings:
 | `limits` | `request_timeout_seconds` | End-to-end request timeout              |
 | `limits` | `requests_per_second` / `request_burst` | Process-wide API token bucket |
 | `limits` | `max_ingest_nodes` / `max_ingest_edges` | Synthetic ingest bounds       |
+| `limits` | `max_nodes_per_namespace` / `max_edges_per_namespace` | Durable mutation quota boundary |
 | `limits` | `max_bfs_depth` | Maximum traversal depth                         |
 | `limits` | `max_vector_dimensions` | Maximum embedding/query dimensions        |
 | `limits` | `max_vector_results` / `max_vector_ef` | Vector-search effort bounds    |
