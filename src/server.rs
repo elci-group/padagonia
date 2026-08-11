@@ -47,6 +47,8 @@ pub fn router(state: AppState, metrics_path: &str) -> Router {
         .route("/vector-search", post(vector_search_handler))
         .route("/transactions", post(transaction_handler))
         .route("/query/nodes", post(query_nodes_handler))
+        .route("/lookup", post(exact_lookup_handler))
+        .route("/aggregate", post(aggregate_handler))
         .route("/lifecycle/tombstone", post(tombstone_handler))
         .route_layer(axum::middleware::from_fn_with_state(
             state.clone(),
@@ -236,16 +238,82 @@ async fn metrics_handler(State(state): State<AppState>) -> impl IntoResponse {
     )
 }
 
-async fn stats_handler(State(state): State<AppState>) -> Json<StatsResponse> {
+async fn stats_handler(
+    State(state): State<AppState>,
+    Extension(principal): Extension<AuthenticatedPrincipal>,
+) -> ApiResult<Json<StatsResponse>> {
+    if !principal.role.permits(Operation::Read) {
+        return Err(forbidden("credential is not authorized for this operation"));
+    }
     let store = state.store.read().await;
-    let (nodes, edges, facts, labels, relations) = store.stats();
-    Json(StatsResponse {
+    let lifecycle = state.lifecycle.read().await;
+    let namespace = &principal.namespace;
+    let nodes = store
+        .nodes()
+        .values()
+        .filter(|node| &node.namespace == namespace)
+        .filter(|node| {
+            lifecycle
+                .get_tombstone(&RecordKey {
+                    namespace: namespace.clone(),
+                    external_id: node.external_id.clone(),
+                })
+                .is_none()
+        })
+        .count();
+    let edges = store
+        .edges()
+        .values()
+        .filter(|edge| &edge.namespace == namespace)
+        .filter(|edge| {
+            lifecycle
+                .get_tombstone(&RecordKey {
+                    namespace: namespace.clone(),
+                    external_id: edge.external_id.clone(),
+                })
+                .is_none()
+        })
+        .count();
+    let facts = store
+        .facts()
+        .iter()
+        .filter(|(subject, _)| match subject {
+            crate::fact::FactSubject::Node(id) => store
+                .nodes()
+                .get(id)
+                .is_some_and(|node| &node.namespace == namespace),
+            crate::fact::FactSubject::Edge(id) => store
+                .edges()
+                .get(id)
+                .is_some_and(|edge| &edge.namespace == namespace),
+        })
+        .map(|(_, facts)| facts.len())
+        .sum();
+    let labels = store
+        .node_label_index
+        .iter()
+        .filter(|(_, ids)| {
+            ids.iter()
+                .filter_map(|id| store.nodes().get(id))
+                .any(|node| &node.namespace == namespace)
+        })
+        .count();
+    let relations = store
+        .edge_label_index
+        .iter()
+        .filter(|(_, ids)| {
+            ids.iter()
+                .filter_map(|id| store.edges().get(id))
+                .any(|edge| &edge.namespace == namespace)
+        })
+        .count();
+    Ok(Json(StatsResponse {
         nodes,
         edges,
         facts,
         labels,
         relations,
-    })
+    }))
 }
 
 async fn query_nodes_handler(
@@ -257,11 +325,163 @@ async fn query_nodes_handler(
         return Err(forbidden("credential is not authorized for this namespace"));
     }
     let store = state.store.read().await;
+    let lifecycle = state.lifecycle.read().await;
     let page = QueryEngine::new(&store).nodes_page(&request.clone().into_query());
+    // Filter tombstoned nodes from page results.
+    let filtered_ids: Vec<u64> = page
+        .entries
+        .into_iter()
+        .filter(|node| {
+            lifecycle
+                .get_tombstone(&RecordKey {
+                    namespace: node.namespace.clone(),
+                    external_id: node.external_id.clone(),
+                })
+                .is_none()
+        })
+        .map(|node| node.id.0)
+        .collect();
     Ok(Json(crate::contract::PageCursorResponse {
         api_version: API_VERSION.to_string(),
-        node_ids: page.entries.into_iter().map(|node| node.id.0).collect(),
+        node_ids: filtered_ids,
         next_cursor: page.next_cursor,
+    }))
+}
+
+async fn exact_lookup_handler(
+    State(state): State<AppState>,
+    Extension(principal): Extension<AuthenticatedPrincipal>,
+    Json(request): Json<crate::contract::ExactLookupRequest>,
+) -> ApiResult<Json<crate::contract::ExactLookupResponse>> {
+    if principal.namespace != request.namespace || !principal.role.permits(Operation::Read) {
+        return Err(forbidden("credential is not authorized for this namespace"));
+    }
+    if request.external_id.trim().is_empty() {
+        return Err(bad_request("external_id must not be empty"));
+    }
+    let lifecycle = state.lifecycle.read().await;
+    if lifecycle
+        .get_tombstone(&RecordKey {
+            namespace: request.namespace.clone(),
+            external_id: request.external_id.clone(),
+        })
+        .is_some()
+    {
+        return Err(not_found(format!(
+            "record {} not found",
+            request.external_id
+        )));
+    }
+    drop(lifecycle);
+    let store = state.store.read().await;
+    let engine = QueryEngine::new(&store);
+    let node = engine
+        .exact_node(&request.namespace, &request.external_id)
+        .ok_or_else(|| not_found(format!("record {} not found", request.external_id)))?;
+    if node.namespace != principal.namespace {
+        return Err(forbidden("credential is not authorized for this namespace"));
+    }
+    Ok(Json(crate::contract::ExactLookupResponse {
+        api_version: API_VERSION.to_string(),
+        node_id: node.id.0,
+        external_id: node.external_id.clone(),
+        label: store
+            .string_table()
+            .resolve_label(node.label)
+            .unwrap_or("?")
+            .to_string(),
+        properties: props_to_json(&node.properties, &store),
+        embedding: node.embedding.clone(),
+        provenance: node.provenance.clone(),
+    }))
+}
+
+async fn aggregate_handler(
+    State(state): State<AppState>,
+    Extension(principal): Extension<AuthenticatedPrincipal>,
+    Json(request): Json<crate::contract::AggregateRequest>,
+) -> ApiResult<Json<crate::contract::AggregateResponse>> {
+    if principal.namespace != request.namespace
+        || (!principal.role.permits(Operation::Read) && !principal.role.permits(Operation::Analyze))
+    {
+        return Err(forbidden("credential is not authorized for this namespace"));
+    }
+    if request.property.trim().is_empty() {
+        return Err(bad_request("property must not be empty"));
+    }
+    let store = state.store.read().await;
+    let _lifecycle = state.lifecycle.read().await;
+    let key_id = store
+        .string_table()
+        .key_id(&request.property)
+        .ok_or_else(|| bad_request(format!("unknown property '{}'", request.property)))?;
+    let label_id = match &request.label {
+        Some(label) => Some(
+            store
+                .string_table()
+                .label_id(label)
+                .ok_or_else(|| bad_request(format!("unknown label '{}'", label)))?,
+        ),
+        None => None,
+    };
+    let engine = QueryEngine::new(&store);
+    // Aggregate respects namespace filtering; tombstoned nodes are excluded by the engine's underlying store check
+    // we filter lifecycle here manually by counting only non-tombstoned nodes.
+    let lifecycle = state.lifecycle.read().await;
+    let aggregate = {
+        // We need to compute aggregate only over non-tombstoned nodes in the namespace.
+        let mut agg = crate::query::NumericAggregate::default();
+        let nodes: Vec<&crate::node::Node> = label_id
+            .and_then(|label| store.node_label_index.get(&label))
+            .map_or_else(
+                || store.nodes().values().collect(),
+                |ids| ids.iter().filter_map(|id| store.nodes.get(id)).collect(),
+            );
+        for node in nodes {
+            if node.namespace != principal.namespace {
+                continue;
+            }
+            if lifecycle
+                .get_tombstone(&RecordKey {
+                    namespace: node.namespace.clone(),
+                    external_id: node.external_id.clone(),
+                })
+                .is_some()
+            {
+                continue;
+            }
+            if let Some(value) = node
+                .properties
+                .iter()
+                .find_map(|(k, v)| {
+                    (*k == key_id).then(|| match v {
+                        crate::value::Scalar::I64(value) => Some(*value as f64),
+                        crate::value::Scalar::F64(value) if value.is_finite() => Some(*value),
+                        _ => None,
+                    })
+                })
+                .flatten()
+            {
+                agg.count += 1;
+                agg.sum += value;
+                agg.min = Some(agg.min.map_or(value, |current| current.min(value)));
+                agg.max = Some(agg.max.map_or(value, |current| current.max(value)));
+            }
+        }
+        agg
+    };
+    // Also demonstrate engine usage for equivalence check in debug; not returned.
+    let _engine_agg = engine.aggregate_numeric_property(
+        Some(&request.namespace),
+        label_id,
+        key_id,
+    );
+    Ok(Json(crate::contract::AggregateResponse {
+        api_version: API_VERSION.to_string(),
+        count: aggregate.count,
+        sum: aggregate.sum,
+        min: aggregate.min,
+        max: aggregate.max,
     }))
 }
 
@@ -347,6 +567,29 @@ async fn transaction_handler(
         ));
     }
     let transaction = request.into_transaction();
+    // Lifecycle tombstone guard: rejected external_ids cannot be resurrected via journal.
+    {
+        let lifecycle = state.lifecycle.read().await;
+        for mutation in &transaction.mutations {
+            let key = match mutation {
+                crate::transaction::Mutation::AddNode {
+                    namespace, external_id, ..
+                }
+                | crate::transaction::Mutation::AddEdge {
+                    namespace, external_id, ..
+                } => RecordKey {
+                    namespace: namespace.clone(),
+                    external_id: external_id.clone(),
+                },
+            };
+            if lifecycle.get_tombstone(&key).is_some() {
+                return Err(bad_request(format!(
+                    "record {} is tombstoned and cannot be recreated",
+                    key.external_id
+                )));
+            }
+        }
+    }
     let result = {
         let mut store = state.store.write().await;
         let (add_nodes, add_edges) =
@@ -422,6 +665,22 @@ async fn create_node_handler(
         .map(|(key, value)| (key.to_owned(), value))
         .collect();
     let namespace = req.namespace.clone();
+    // Tombstone guard
+    {
+        let lifecycle = state.lifecycle.read().await;
+        if lifecycle
+            .get_tombstone(&RecordKey {
+                namespace: namespace.clone(),
+                external_id: external_id.clone(),
+            })
+            .is_some()
+        {
+            return Err(bad_request(format!(
+                "record {} is tombstoned and cannot be recreated",
+                external_id
+            )));
+        }
+    }
     let id = {
         let store = state.store.read().await;
         if let (Some(expected), Some(actual)) = (
@@ -469,12 +728,22 @@ async fn get_node_handler(
     Path(id): Path<u64>,
 ) -> ApiResult<Json<NodeResponse>> {
     let store = state.store.read().await;
+    let lifecycle = state.lifecycle.read().await;
     let node = store
         .nodes()
         .get(&NodeId(id))
         .ok_or_else(|| not_found(format!("node {id} not found")))?;
     if node.namespace != principal.namespace || !principal.role.permits(Operation::Read) {
         return Err(forbidden("credential is not authorized for this namespace"));
+    }
+    if lifecycle
+        .get_tombstone(&RecordKey {
+            namespace: node.namespace.clone(),
+            external_id: node.external_id.clone(),
+        })
+        .is_some()
+    {
+        return Err(not_found(format!("node {id} not found")));
     }
     Ok(Json(NodeResponse {
         id: node.id.0,
@@ -532,6 +801,22 @@ async fn create_edge_handler(
         .into_iter()
         .map(|(key, value)| (key.to_owned(), value))
         .collect();
+    // Tombstone guard
+    {
+        let lifecycle = state.lifecycle.read().await;
+        if lifecycle
+            .get_tombstone(&RecordKey {
+                namespace: req.namespace.clone(),
+                external_id: external_id.clone(),
+            })
+            .is_some()
+        {
+            return Err(bad_request(format!(
+                "record {} is tombstoned and cannot be recreated",
+                external_id
+            )));
+        }
+    }
     let id = {
         let mut store = state.store.write().await;
         enforce_namespace_quota(&store, &req.namespace, 0, 1, &state.limits)?;
@@ -573,8 +858,12 @@ async fn create_edge_handler(
 
 async fn bfs_handler(
     State(state): State<AppState>,
+    Extension(principal): Extension<AuthenticatedPrincipal>,
     Json(req): Json<BfsRequest>,
 ) -> ApiResult<Json<Vec<BfsEntry>>> {
+    if !principal.role.permits(Operation::Read) {
+        return Err(forbidden("credential is not authorized for this operation"));
+    }
     if req.depth > state.limits.max_bfs_depth {
         return Err(bad_request(format!(
             "depth exceeds configured limit {}",
@@ -589,38 +878,80 @@ async fn bfs_handler(
             "min_confidence must be finite and between 0 and 1",
         ));
     }
-    let store = state.store.read().await;
+    let (store_guard, lifecycle_guard) = {
+        let store = state.store.read().await;
+        let lifecycle = state.lifecycle.read().await;
+        // Validate start node belongs to caller's namespace before traversing.
+        let start_node = store
+            .nodes()
+            .get(&NodeId(req.start))
+            .ok_or_else(|| not_found(format!("node {} not found", req.start)))?;
+        if start_node.namespace != principal.namespace {
+            return Err(forbidden("credential is not authorized for this namespace"));
+        }
+        if lifecycle
+            .get_tombstone(&RecordKey {
+                namespace: start_node.namespace.clone(),
+                external_id: start_node.external_id.clone(),
+            })
+            .is_some()
+        {
+            return Err(not_found(format!("node {} not found", req.start)));
+        }
+        // Clone for later filtering; we hold no lock while computing BFS to avoid deadlock,
+        // so we snapshot store and lifecycle.
+        (store.clone(), lifecycle.clone())
+    };
     let relation_id = match &req.relation {
         Some(relation) => Some(
-            store
+            store_guard
                 .string_table()
                 .relation_id(relation)
                 .ok_or_else(|| bad_request(format!("unknown relation '{relation}'")))?,
         ),
         None => None,
     };
-    let engine = QueryEngine::new(&store);
+    let engine = QueryEngine::new(&store_guard);
     let reached = engine.bfs(
         NodeId(req.start),
         req.depth,
         relation_id,
         req.min_confidence,
     );
-    Ok(Json(
-        reached
-            .into_iter()
-            .map(|(node, depth)| BfsEntry {
-                node_id: node.0,
+    // Namespace filtering: only return nodes in caller's namespace and not tombstoned.
+    let filtered: Vec<BfsEntry> = reached
+        .into_iter()
+        .filter_map(|(node_id, depth)| {
+            let node = store_guard.nodes().get(&node_id)?;
+            if node.namespace != principal.namespace {
+                return None;
+            }
+            if lifecycle_guard
+                .get_tombstone(&RecordKey {
+                    namespace: node.namespace.clone(),
+                    external_id: node.external_id.clone(),
+                })
+                .is_some()
+            {
+                return None;
+            }
+            Some(BfsEntry {
+                node_id: node_id.0,
                 depth,
             })
-            .collect(),
-    ))
+        })
+        .collect();
+    Ok(Json(filtered))
 }
 
 async fn vector_search_handler(
     State(state): State<AppState>,
+    Extension(principal): Extension<AuthenticatedPrincipal>,
     Json(req): Json<VectorSearchRequest>,
 ) -> ApiResult<Json<Vec<VectorHit>>> {
+    if !principal.role.permits(Operation::Read) && !principal.role.permits(Operation::Analyze) {
+        return Err(forbidden("credential is not authorized for this operation"));
+    }
     if req.query.is_empty() {
         return Err(bad_request("query embedding must not be empty"));
     }
@@ -642,8 +973,13 @@ async fn vector_search_handler(
             )))
         }
     };
-    let store = state.store.read().await;
-    if let Some(expected) = expected_embedding_dimension(&store) {
+    // Snapshot store + lifecycle for namespace-filtered search.
+    let (store_snapshot, lifecycle_snapshot) = {
+        let store = state.store.read().await;
+        let lifecycle = state.lifecycle.read().await;
+        (store.clone(), lifecycle.clone())
+    };
+    if let Some(expected) = expected_embedding_dimension(&store_snapshot) {
         if req.query.len() != expected {
             return Err(bad_request(format!(
                 "query dimension {} does not match graph dimension {expected}",
@@ -653,7 +989,7 @@ async fn vector_search_handler(
     }
     let label_id = match &req.label {
         Some(label) => Some(
-            store
+            store_snapshot
                 .string_table()
                 .label_id(label)
                 .ok_or_else(|| bad_request(format!("unknown label '{label}'")))?,
@@ -680,16 +1016,32 @@ async fn vector_search_handler(
         ef_construction,
         ef_search,
     };
-    let engine = QueryEngine::new(&store);
+    let engine = QueryEngine::new(&store_snapshot);
     let hits = engine.vector_search_with_params(distance, params, &req.query, k, label_id);
-    Ok(Json(
-        hits.into_iter()
-            .map(|(node, distance)| VectorHit {
-                node_id: node.0,
+    // Tenant-isolated filtering: drop hits not in caller's namespace or tombstoned.
+    let filtered: Vec<VectorHit> = hits
+        .into_iter()
+        .filter_map(|(node_id, distance)| {
+            let node = store_snapshot.nodes().get(&node_id)?;
+            if node.namespace != principal.namespace {
+                return None;
+            }
+            if lifecycle_snapshot
+                .get_tombstone(&RecordKey {
+                    namespace: node.namespace.clone(),
+                    external_id: node.external_id.clone(),
+                })
+                .is_some()
+            {
+                return None;
+            }
+            Some(VectorHit {
+                node_id: node_id.0,
                 distance,
             })
-            .collect(),
-    ))
+        })
+        .collect();
+    Ok(Json(filtered))
 }
 
 /// Wait for SIGTERM (Unix) or Ctrl-C, whichever comes first.
