@@ -16,18 +16,18 @@ use tokio::sync::{Mutex, RwLock};
 
 #[derive(Clone)]
 pub struct AppState {
-    pub(crate) store: Arc<RwLock<Store>>,
-    pub(crate) metrics_handle: PrometheusHandle,
-    pub(crate) credentials: Arc<tokio::sync::RwLock<CredentialRegistry>>,
-    pub(crate) lifecycle: Arc<RwLock<LifecycleRegistry>>,
-    pub(crate) data_path: Arc<PathBuf>,
-    pub(crate) hnsw: (usize, usize, usize),
-    pub(crate) limits: LimitsConfig,
-    pub(crate) journal: Arc<Mutex<TransactionJournal>>,
-    pub(crate) outbox: Arc<Mutex<PersistentOutbox>>,
+    pub store: Arc<RwLock<Store>>,
+    pub metrics_handle: PrometheusHandle,
+    pub credentials: Arc<tokio::sync::RwLock<CredentialRegistry>>,
+    pub lifecycle: Arc<RwLock<LifecycleRegistry>>,
+    pub data_path: Arc<PathBuf>,
+    pub hnsw: (usize, usize, usize),
+    pub limits: LimitsConfig,
+    pub journal: Arc<Mutex<TransactionJournal>>,
+    pub outbox: Arc<Mutex<PersistentOutbox>>,
     /// Serializes journal commit, snapshot replacement and checkpointing.
     /// This is the single-writer boundary for durable state.
-    pub(crate) commit_gate: Arc<Mutex<()>>,
+    pub commit_gate: Arc<Mutex<()>>,
     rate_limiter: Arc<Mutex<RateLimiter>>,
 }
 
@@ -75,16 +75,6 @@ impl AppState {
         let journal = TransactionJournal::open(journal_path).map_err(|error| error.to_string())?;
         let outbox_path = data_path.with_extension("outbox");
         let outbox = PersistentOutbox::open(outbox_path).map_err(|error| error.to_string())?;
-        // Replay only mutations absent from the snapshot. This covers both
-        // empty-store recovery and the crash window after a journal commit but
-        // before the snapshot replacement, without duplicating a valid graph.
-        journal
-            .replay_missing(&mut store)
-            .map_err(|error| error.to_string())?;
-        let mut credentials = CredentialRegistry::default();
-        // The configured key is retained as a bootstrap administrator. New
-        // tenants must use scoped credentials issued by the control plane.
-        credentials.insert_token(&api_key, NamespaceId::default(), Role::Administrator);
         let lifecycle_path = data_path.with_extension("lifecycle");
         let lifecycle = if lifecycle_path.is_file() {
             let bytes = fs::read(&lifecycle_path).map_err(|error| error.to_string())?;
@@ -92,6 +82,29 @@ impl AppState {
         } else {
             LifecycleRegistry::default()
         };
+        // Replay only mutations absent from the snapshot and not tombstoned.
+        journal
+            .replay_missing_with_lifecycle(&mut store, &lifecycle)
+            .map_err(|error| error.to_string())?;
+        let credentials_path = data_path.with_extension("credentials");
+        let mut credentials = if credentials_path.is_file() {
+            CredentialRegistry::load_from_path(&credentials_path)?
+        } else {
+            let mut registry = CredentialRegistry::default();
+            registry.insert_token(&api_key, NamespaceId::default(), Role::Administrator);
+            registry.save_to_path(&credentials_path)?;
+            registry
+        };
+        // Ensure bootstrap admin is present even if credentials file predates it (forward compat).
+        let bootstrap_hash = {
+            use sha2::{Digest, Sha256};
+            let h: [u8; 32] = Sha256::digest(api_key.as_bytes()).into();
+            h
+        };
+        if !credentials.credentials.contains_key(&bootstrap_hash) {
+            credentials.insert_token(&api_key, NamespaceId::default(), Role::Administrator);
+            credentials.save_to_path(&credentials_path)?;
+        }
         Ok(Self {
             store: Arc::new(RwLock::new(store)),
             metrics_handle,
@@ -109,6 +122,46 @@ impl AppState {
 
     pub(crate) async fn allow_request(&self) -> bool {
         self.rate_limiter.lock().await.allow()
+    }
+
+    /// Durably insert a credential and persist the registry atomically.
+    pub async fn insert_credential_token(
+        &self,
+        token: &str,
+        namespace: NamespaceId,
+        role: Role,
+    ) -> Result<(), String> {
+        let _guard = self.commit_gate.lock().await;
+        let mut registry = self.credentials.write().await;
+        registry.insert_token(token, namespace, role);
+        let path = self.data_path.with_extension("credentials");
+        registry.save_to_path(&path)?;
+        Ok(())
+    }
+
+    /// Durably revoke a credential and persist the registry atomically.
+    pub async fn revoke_credential(&self, token: &str) -> Result<bool, String> {
+        let _guard = self.commit_gate.lock().await;
+        let mut registry = self.credentials.write().await;
+        let revoked = registry.revoke(token);
+        if revoked {
+            let path = self.data_path.with_extension("credentials");
+            registry.save_to_path(&path)?;
+        }
+        Ok(revoked)
+    }
+
+    /// Expose the durable credential path for backup tooling.
+    pub fn credentials_path(&self) -> PathBuf {
+        self.data_path.with_extension("credentials")
+    }
+
+    pub fn lifecycle_path(&self) -> PathBuf {
+        self.data_path.with_extension("lifecycle")
+    }
+
+    pub fn journal_path(&self) -> PathBuf {
+        self.data_path.with_extension("journal")
     }
 }
 

@@ -33,9 +33,60 @@ pub enum LifecycleError {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct LifecycleRegistry {
+    #[serde(with = "hashmap_as_vec")]
     pub(crate) tombstones: HashMap<RecordKey, Tombstone>,
+    #[serde(with = "hashset_as_vec")]
     pub(crate) retractions: HashSet<RecordKey>,
+    #[serde(with = "hashmap_as_vec")]
     pub(crate) superseded_by: HashMap<RecordKey, RecordKey>,
+}
+
+mod hashmap_as_vec {
+    use super::*;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S, K, V>(map: &HashMap<K, V>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+        K: Serialize,
+        V: Serialize,
+    {
+        let vec: Vec<(&K, &V)> = map.iter().collect();
+        vec.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D, K, V>(deserializer: D) -> Result<HashMap<K, V>, D::Error>
+    where
+        D: Deserializer<'de>,
+        K: Deserialize<'de> + Eq + std::hash::Hash,
+        V: Deserialize<'de>,
+    {
+        let vec: Vec<(K, V)> = Vec::deserialize(deserializer)?;
+        Ok(vec.into_iter().collect())
+    }
+}
+
+mod hashset_as_vec {
+    use super::*;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S, T>(set: &HashSet<T>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+        T: Serialize,
+    {
+        let vec: Vec<&T> = set.iter().collect();
+        vec.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D, T>(deserializer: D) -> Result<HashSet<T>, D::Error>
+    where
+        D: Deserializer<'de>,
+        T: Deserialize<'de> + Eq + std::hash::Hash,
+    {
+        let vec: Vec<T> = Vec::deserialize(deserializer)?;
+        Ok(vec.into_iter().collect())
+    }
 }
 
 impl LifecycleRegistry {

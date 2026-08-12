@@ -56,3 +56,36 @@ pub struct PageCursorResponse {
     pub node_ids: Vec<u64>,
     pub next_cursor: Option<String>,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ExactLookupRequest {
+    pub namespace: NamespaceId,
+    pub external_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ExactLookupResponse {
+    pub api_version: String,
+    pub node_id: u64,
+    pub external_id: String,
+    pub label: String,
+    pub properties: serde_json::Value,
+    pub embedding: Option<Vec<f32>>,
+    pub provenance: crate::provenance::Provenance,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AggregateRequest {
+    pub namespace: NamespaceId,
+    pub label: Option<String>,
+    pub property: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AggregateResponse {
+    pub api_version: String,
+    pub count: usize,
+    pub sum: f64,
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+}

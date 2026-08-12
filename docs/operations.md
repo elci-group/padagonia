@@ -167,16 +167,33 @@ Each successful mutation is committed to the append-only transaction journal,
 then a consistent snapshot is written off the async executor before the request
 is acknowledged. Startup replays only journal records absent from the loaded
 snapshot, including the crash window after journal commit and before snapshot
-replacement. Saves write a unique same-directory temporary file, flush and
-`fsync` it, atomically rename it over the destination, and sync the parent
-directory on Unix. The journal is the acknowledged-write boundary; snapshot
-shipping remains the backup mechanism and replication is not yet provided.
+replacement, and tombstoned external IDs are not resurrected on replay. Saves
+write a unique same-directory temporary file, flush and `fsync` it, atomically
+rename it over the destination, and sync the parent directory on Unix. The
+journal is the acknowledged-write boundary; snapshot shipping remains the backup
+mechanism and replication is not yet provided.
+
+Lifecycle tombstones, credential hashes, and revocations are durably persisted
+as sidecars alongside the snapshot. The recovery boundary includes:
+
+- `store.pad` — versioned graph blocks and provenance
+- `store.journal` — write-ahead transaction batches and idempotency receipts
+- `store.lifecycle` — namespace-scoped tombstones and retention state
+- `store.credentials` — hashed credentials and revocation flags
+- `store.outbox` — pending downstream events awaiting acknowledgement
+
+A single-node backup must capture all five files atomically (e.g., filesystem
+snapshot or ordered copy: journal first, then store, then lifecycle/credentials).
 
 Create a validated snapshot without replacing an existing file:
 
 ```bash
 padagonia snapshot --in /var/lib/padagonia/data/store.pad \
   --out /var/lib/padagonia/backups/store-$(date +%F).pad
+# Also snapshot sidecars when present:
+cp /var/lib/padagonia/data/store.journal /var/lib/padagonia/backups/store-$(date +%F).journal
+cp /var/lib/padagonia/data/store.lifecycle /var/lib/padagonia/backups/store-$(date +%F).lifecycle 2>/dev/null || true
+cp /var/lib/padagonia/data/store.credentials /var/lib/padagonia/backups/store-$(date +%F).credentials 2>/dev/null || true
 ```
 
 Restore validates the snapshot before and after atomic replacement and requires
@@ -186,12 +203,38 @@ explicit overwrite consent:
 systemctl stop padagonia
 padagonia restore --in /var/lib/padagonia/backups/store-2026-07-31.pad \
   --out /var/lib/padagonia/data/store.pad --force
+cp /var/lib/padagonia/backups/store-2026-07-31.journal /var/lib/padagonia/data/store.journal
+cp /var/lib/padagonia/backups/store-2026-07-31.lifecycle /var/lib/padagonia/data/store.lifecycle 2>/dev/null || true
+cp /var/lib/padagonia/backups/store-2026-07-31.credentials /var/lib/padagonia/data/store.credentials 2>/dev/null || true
 systemctl start padagonia
 curl --fail http://127.0.0.1:7373/ready
 ```
 
 Copy snapshots to separate failure domains, record retention, and test restore
 regularly. Live-file deletion does not erase remote snapshots or logs.
+
+## Replication, backup, RPO, and RTO
+
+PADAGONIA v0.1 is a single-node, single-writer store with no replication,
+consensus, or automatic failover. The following expectations are contractual
+until a replicated mode is implemented:
+
+| Property | Current guarantee | How it is achieved |
+|----------|-------------------|--------------------|
+| **Replication** | None. One writable primary per graph file. | Operators ship snapshots to a second host via object storage; read-replicas are not provided. |
+| **Backup scope** | Full recovery requires the latest `store.pad` plus `store.journal`, `store.lifecycle`, `store.credentials`, and `store.outbox`. The journal alone is sufficient to rebuild committed work from the last checkpoint. | Files listed in “Durability” above; journal receipts preserve idempotency across snapshot shipping. |
+| **RPO (Recovery Point Objective)** | Time since the last successful journal `fsync` plus the last shipped backup. With local disk, committed writes are durable on acknowledged response; shipped RPO is the backup cadence (recommended ≤ 15 min for warm standby, ≤ 1 h for cold). | Journal `fsync` on commit; automated snapshot shipping (e.g., `cron` + `rclone`/`aws s3 cp`) and off-site verification. |
+| **RTO (Recovery Time Objective)** | < 5 min for process restart with local files; < 30 min for full host restore from off-site backup (depends on snapshot size and network). Measured in `benchmark_gate` crash/recovery tests. | Store load is bounded by `MAX_STORE_BYTES`/`MAX_BLOCK_COUNT`; journal replay is identity-aware and skips present external IDs and tombstones; restore CLI validates before atomic replace. |
+| **Durability boundary** | Acknowledged writes survive a process crash or host power loss when the underlying filesystem honors `fsync` + atomic rename + directory sync (ext4/xfs with `data=ordered`). | Same-directory temporary file, `fsync`, atomic `rename`, parent-directory `fsync`; journal is the write-ahead log. |
+| **Consistency after restore** | Restored graph is causally consistent to the last shipped journal record; tombstones are not resurrected; idempotency keys remain blocked. | Lifecycle-aware replay (`replay_missing_with_lifecycle`); idempotency receipts are checkpointed with the journal. |
+
+Operational guidance:
+
+- Keep journal and store on the same filesystem so `rename` remains atomic.
+- Ship backups to at least two independent failure domains.
+- Test restore monthly and after every storage-format bump.
+- For Dreamsequence migration, retain the SQL dump as a read-only rollback artifact until the release process signs the restore + rollback rehearsal transcripts.
+- Do not claim multi-tenant high availability until replication is implemented and independently measured.
 
 ## TLS reverse proxy
 
