@@ -718,6 +718,14 @@ async fn shadow_read_and_rollback_rehearsal() {
         .iter()
         .map(|v| v.as_u64().unwrap())
         .collect();
+    let http_nodes = body["nodes"].as_array().unwrap();
+    assert_eq!(http_nodes.len(), 5);
+    assert!(http_nodes.iter().all(|node| {
+        node["id"].is_u64()
+            && node["label"] == "Run"
+            && node["properties"].is_object()
+            && node["provenance"].is_object()
+    }));
 
     // Direct store canonical: load file and query via QueryEngine
     let _handle = PrometheusBuilder::new().build_recorder().handle();
@@ -783,6 +791,7 @@ async fn shadow_read_and_rollback_rehearsal() {
         4,
         "tombstoned record must not appear in pagination"
     );
+    assert_eq!(body["nodes"].as_array().unwrap().len(), 4);
 
     // Simulate rollback rehearsal: the journal retains idempotency receipts but not payloads after checkpoint;
     // rollback capability is proven by the fact that the snapshot file still contains run-0 before tombstone.

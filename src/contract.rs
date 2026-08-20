@@ -56,7 +56,17 @@ impl NodeQueryRequest {
 pub struct PageCursorResponse {
     pub api_version: String,
     pub node_ids: Vec<u64>,
+    pub nodes: Vec<NodeRecordResponse>,
     pub next_cursor: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct NodeRecordResponse {
+    pub id: u64,
+    pub label: String,
+    pub properties: serde_json::Value,
+    pub embedding: Option<Vec<f32>>,
+    pub provenance: crate::provenance::Provenance,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

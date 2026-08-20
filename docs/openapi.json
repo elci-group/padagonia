@@ -104,6 +104,27 @@
           "provenance": {"$ref": "#/components/schemas/Provenance"}
         }
       },
+      "NodeRecordResponse": {
+        "type": "object",
+        "required": ["id", "label", "properties", "provenance"],
+        "properties": {
+          "id": {"type": "integer", "minimum": 0},
+          "label": {"type": "string"},
+          "properties": {"type": "object", "additionalProperties": true},
+          "embedding": {"type": ["array", "null"], "items": {"type": "number"}},
+          "provenance": {"$ref": "#/components/schemas/Provenance"}
+        }
+      },
+      "PageCursorResponse": {
+        "type": "object",
+        "required": ["api_version", "node_ids", "nodes", "next_cursor"],
+        "properties": {
+          "api_version": {"type": "string", "const": "v1"},
+          "node_ids": {"type": "array", "items": {"type": "integer", "minimum": 0}},
+          "nodes": {"type": "array", "items": {"$ref": "#/components/schemas/NodeRecordResponse"}},
+          "next_cursor": {"type": ["string", "null"]}
+        }
+      },
       "AggregateRequest": {
         "type": "object",
         "required": ["namespace", "property"],
@@ -162,7 +183,7 @@
       "post": {
         "security": [{"bearerAuth": []}],
         "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["namespace", "limit"], "properties": {"namespace": {"type": "string"}, "label": {"type": "integer", "minimum": 0}, "created_after": {"type": "integer", "minimum": 0}, "created_before": {"type": "integer", "minimum": 0}, "limit": {"type": "integer", "minimum": 1, "maximum": 10000}, "cursor": {"type": "string"}}}}}},
-        "responses": {"200": {"description": "Namespace-scoped cursor page of node ids"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}}
+        "responses": {"200": {"description": "Namespace-scoped cursor page of complete nodes and compatibility ids", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PageCursorResponse"}}}}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}}
       }
     },
     "/api/v1/lifecycle/tombstone": {

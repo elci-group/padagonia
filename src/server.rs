@@ -7,7 +7,7 @@ use crate::api::*;
 use crate::app_config::Settings;
 use crate::auth::auth_middleware;
 use crate::authorization::{AuthenticatedPrincipal, Operation};
-use crate::contract::{BatchMutationRequest, BatchMutationResponse, API_VERSION};
+use crate::contract::{BatchMutationRequest, BatchMutationResponse, NodeRecordResponse, API_VERSION};
 use crate::hnsw::{Distance, HnswParams};
 use crate::http_error::{bad_request, forbidden, internal_error, not_found, ApiResult};
 use crate::id::NodeId;
@@ -329,8 +329,11 @@ async fn query_nodes_handler(
     let store = state.store.read().await;
     let lifecycle = state.lifecycle.read().await;
     let page = QueryEngine::new(&store).nodes_page(&request.clone().into_query());
-    // Filter tombstoned nodes from page results.
-    let filtered_ids: Vec<u64> = page
+    // Filter tombstoned nodes and resolve their interned values while the
+    // store read lock is held. Returning complete records here prevents
+    // consumers from turning one bounded query into an unbounded N+1 series
+    // of GET /nodes/:id requests.
+    let nodes: Vec<NodeRecordResponse> = page
         .entries
         .into_iter()
         .filter(|node| {
@@ -341,11 +344,23 @@ async fn query_nodes_handler(
                 })
                 .is_none()
         })
-        .map(|node| node.id.0)
+        .map(|node| NodeRecordResponse {
+            id: node.id.0,
+            label: store
+                .string_table()
+                .resolve_label(node.label)
+                .unwrap_or("?")
+                .to_string(),
+            properties: props_to_json(&node.properties, &store),
+            embedding: node.embedding.clone(),
+            provenance: node.provenance.clone(),
+        })
         .collect();
+    let node_ids = nodes.iter().map(|node| node.id).collect();
     Ok(Json(crate::contract::PageCursorResponse {
         api_version: API_VERSION.to_string(),
-        node_ids: filtered_ids,
+        node_ids,
+        nodes,
         next_cursor: page.next_cursor,
     }))
 }
