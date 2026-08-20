@@ -7,7 +7,9 @@ use crate::api::*;
 use crate::app_config::Settings;
 use crate::auth::auth_middleware;
 use crate::authorization::{AuthenticatedPrincipal, Operation};
-use crate::contract::{BatchMutationRequest, BatchMutationResponse, NodeRecordResponse, API_VERSION};
+use crate::contract::{
+    BatchMutationRequest, BatchMutationResponse, NodeRecordResponse, API_VERSION,
+};
 use crate::hnsw::{Distance, HnswParams};
 use crate::http_error::{bad_request, forbidden, internal_error, not_found, ApiResult};
 use crate::id::NodeId;
