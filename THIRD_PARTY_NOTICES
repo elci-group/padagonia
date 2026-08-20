@@ -123,7 +123,7 @@ Project license: MIT
 | oorandom | 11.1.5 | NOASSERTION | cargo |
 | openssl-probe | 0.2.1 | NOASSERTION | cargo |
 | ordered-multimap | 0.7.3 | NOASSERTION | cargo |
-| padagonia | 0.1.65 | NOASSERTION | cargo |
+| padagonia | 0.1.66 | NOASSERTION | cargo |
 | pathdiff | 0.2.3 | NOASSERTION | cargo |
 | percent-encoding | 2.3.2 | NOASSERTION | cargo |
 | pest | 2.8.7 | NOASSERTION | cargo |

@@ -1,7 +1,7 @@
 {
   "SPDXID": "SPDXRef-DOCUMENT",
   "creationInfo": {
-    "created": "2026-08-20T14:30:26.947668231+00:00",
+    "created": "2026-08-20T14:32:46.823141143+00:00",
     "creators": [
       "Tool: lwoodz-0.1.0",
       "Person: ViCo Agent"
@@ -847,7 +847,7 @@
       "name": "padagonia",
       "source": "cargo",
       "spdx": "NOASSERTION",
-      "version": "0.1.65"
+      "version": "0.1.66"
     },
     {
       "license": "NOASSERTION",

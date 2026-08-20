@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 [package]
 name = "padagonia"
-version = "0.1.66"
+version = "0.1.67"
 edition = "2021"
 authors = ["ViCo Agent <agent@elci.group>"]
 description = "Ontology-native, immutable, provenance-rich graph store for autonomous AI agents."
