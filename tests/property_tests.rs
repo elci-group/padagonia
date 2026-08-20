@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 //! Property-based tests for PADAGONIA storage and operations.
 
 use padagonia::bench_support::generate_powerlaw;

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use axum::Router;

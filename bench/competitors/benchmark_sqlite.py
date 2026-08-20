@@ -1,3 +1,5 @@
+# Copyright (c) 2026 ViCo Agent
+# SPDX-License-Identifier: MIT
 """Benchmark SQLite in-memory graph on the same workload."""
 import csv
 import json

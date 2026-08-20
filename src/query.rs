@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 use crate::edge::Edge;
 use crate::fact::FactSubject;
 use crate::hnsw::{Distance, HnswParams};

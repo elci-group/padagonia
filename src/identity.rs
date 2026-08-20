@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 //! Stable, tenant-scoped identities for persisted graph records.
 
 use serde::{Deserialize, Serialize};

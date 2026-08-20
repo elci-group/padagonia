@@ -1,3 +1,5 @@
+# Copyright (c) 2026 ViCo Agent
+# SPDX-License-Identifier: MIT
 """Generate a deterministic vector workload for ANN benchmarking."""
 import csv
 import sys

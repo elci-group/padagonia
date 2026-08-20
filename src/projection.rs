@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 use crate::id::NodeId;
 use crate::ontology::StringTableExt;
 use crate::store::Store;

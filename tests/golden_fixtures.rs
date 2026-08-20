@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 //! Golden binary fixtures for storage format testing.
 
 use padagonia::bench_support::generate_powerlaw;

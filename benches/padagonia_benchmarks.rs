@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use padagonia::bench_support::{generate_powerlaw, generate_vectors, Rng};
 use padagonia::hnsw::{Distance, DEFAULT_EF_CONSTRUCTION, DEFAULT_M};

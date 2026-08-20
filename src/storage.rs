@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 //! On-disk storage format: file header, blocks, checksums, and parallel save/load.
 
 use crate::block::{Block, BlockKind, BlockPayload, FileHeader, MAGIC, VERSION};

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 //! Shared HTTP state and process-wide request-rate governance.
 
 use crate::app_config::LimitsConfig;

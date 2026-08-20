@@ -1,3 +1,5 @@
+# Copyright (c) 2026 ViCo Agent
+# SPDX-License-Identifier: MIT
 palette:
   primary: "#2563EB"  # Technical blue
   secondary: ["#4F46E5", "#7C3AED", "#0891B2", "#059669", "#DC2626"]  # Engineering colors

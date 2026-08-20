@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 use serde::{Deserialize, Serialize};
 
 /// A scalar property value. Embeddings are stored separately on Node/Edge.

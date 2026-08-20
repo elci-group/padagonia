@@ -1,3 +1,5 @@
+# Copyright (c) 2026 ViCo Agent
+# SPDX-License-Identifier: MIT
 product:
   name: PADAGONIA
   tagline: "Ontology-native, immutable, provenance-rich graph store for autonomous AI agents"

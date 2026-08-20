@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 //! Configuration loaded from `padagonia.toml`, environment variables, and defaults.
 
 use config::{Config, Environment, File};

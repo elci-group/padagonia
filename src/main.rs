@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 //! PADAGONIA command-line entry point.
 //!
 //! The CLI owns configuration loading, logging setup, and dispatch. Keeping

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 //! Authentication middleware and helpers for HTTP server.
 
 use crate::authorization::AuthenticatedPrincipal;

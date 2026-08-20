@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 //! CLI argument parsing, help output, and command dispatch for the padagonia binary.
 
 use crate::bench_support::{generate_powerlaw, generate_vectors, Rng};

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 //! Frame encoding/decoding utilities for storage format with bounded streaming.
 
 use crate::storage::{Result, StoreError};

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 const REPO = "elci-group/padagonia";
 const RELEASES_URL = `https://api.github.com/repos/${REPO}/releases`;
 const FALLBACK_RELEASES = [

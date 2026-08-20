@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 use crate::provenance::Provenance;
 use crate::store::Store;
 use crate::value::Scalar;

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 //! Machine-checkable measurements for the SQL replacement superiority gate.
 
 use serde::{Deserialize, Serialize};

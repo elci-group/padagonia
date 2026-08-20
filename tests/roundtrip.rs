@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 use padagonia::bench_support::generate_powerlaw;
 use padagonia::provenance::Provenance;
 use padagonia::store::Store;

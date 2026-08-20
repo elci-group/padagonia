@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 use crate::id::{EdgeId, KeyId, NodeId, RelationId};
 use crate::identity::{default_external_id, default_schema_version, NamespaceId};
 use crate::provenance::Provenance;

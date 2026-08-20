@@ -1,6 +1,8 @@
+# Copyright (c) 2026 ViCo Agent
+# SPDX-License-Identifier: MIT
 [package]
 name = "padagonia"
-version = "0.1.65"
+version = "0.1.66"
 edition = "2021"
 authors = ["ViCo Agent <agent@elci.group>"]
 description = "Ontology-native, immutable, provenance-rich graph store for autonomous AI agents."

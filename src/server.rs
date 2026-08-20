@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 //! HTTP server for PADAGONIA: REST API, health checks, auth, metrics,
 //! write-through persistence, and graceful shutdown.
 

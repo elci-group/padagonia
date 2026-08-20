@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 use crate::id::NodeId;
 use fast_hnsw::distance::Distance as FastDistance;
 use fast_hnsw::{Builder, Hnsw};

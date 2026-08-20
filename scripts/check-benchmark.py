@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 ViCo Agent
+# SPDX-License-Identifier: MIT
 """Deterministic CI gate for PADAGONIA benchmark artifacts."""
 
 import json

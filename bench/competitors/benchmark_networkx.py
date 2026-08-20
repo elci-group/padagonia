@@ -1,3 +1,5 @@
+# Copyright (c) 2026 ViCo Agent
+# SPDX-License-Identifier: MIT
 """Benchmark NetworkX on the same deterministic workload."""
 import csv
 import json

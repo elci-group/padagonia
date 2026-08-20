@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 //! HTTP rate, correlation, and structured-error middleware.
 
 use crate::http_error::ErrorResponse;

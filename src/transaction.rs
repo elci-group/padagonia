@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 //! Durable, replayable mutation batches.
 //!
 //! The journal is deliberately separate from snapshot storage. A caller can

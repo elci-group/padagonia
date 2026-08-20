@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 //! Tenant authorization and quota primitives.
 
 use crate::identity::NamespaceId;

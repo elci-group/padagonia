@@ -1,3 +1,5 @@
+# Copyright (c) 2026 ViCo Agent
+# SPDX-License-Identifier: MIT
 # PADAGONIA configuration tuned for the official Docker image.
 # The listen address is bound to all interfaces so the container port can be
 # exposed to the host and to orchestrators.

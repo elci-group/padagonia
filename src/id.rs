@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display};
 

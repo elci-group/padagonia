@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 //! Storage migration layer for handling data format evolution.
 
 use crate::block::{FileHeader, VERSION};

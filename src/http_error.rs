@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 //! HTTP error types and response helpers.
 
 use axum::{http::StatusCode, Json};

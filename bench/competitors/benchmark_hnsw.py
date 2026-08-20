@@ -1,3 +1,5 @@
+# Copyright (c) 2026 ViCo Agent
+# SPDX-License-Identifier: MIT
 """Benchmark vector ANN: brute-force numpy and hnswlib vs PADAGONIA HNSW."""
 import csv
 import json

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 //! HTTP data-transfer models and boundary validation.
 
 use crate::app_config::LimitsConfig;

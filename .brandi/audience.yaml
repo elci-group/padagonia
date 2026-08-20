@@ -1,3 +1,5 @@
+# Copyright (c) 2026 ViCo Agent
+# SPDX-License-Identifier: MIT
 segments:
   - name: ai_researchers
     description: "Researchers building autonomous AI agents and knowledge systems"

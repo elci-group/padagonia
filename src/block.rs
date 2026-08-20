@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 //! Block encoding/decoding and data structures for storage.
 
 use crate::checksum::compute_checksum;

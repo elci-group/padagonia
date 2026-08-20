@@ -1,3 +1,5 @@
+# Copyright (c) 2026 ViCo Agent
+# SPDX-License-Identifier: MIT
 """Deterministic power-law-ish workload generator matching padagonia bench_support."""
 import csv
 import sys

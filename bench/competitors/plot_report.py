@@ -1,3 +1,5 @@
+# Copyright (c) 2026 ViCo Agent
+# SPDX-License-Identifier: MIT
 """Read PADAGONIA and competitor results, generate BENCHMARK_REPORT.md."""
 import json
 from pathlib import Path

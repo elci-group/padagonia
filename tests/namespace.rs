@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 use padagonia::{NamespaceId, Provenance, Store};
 
 fn provenance() -> Provenance {

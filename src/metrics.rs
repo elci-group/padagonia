@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ViCo Agent
+// SPDX-License-Identifier: MIT
 //! Metrics handling for HTTP server.
 
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
