@@ -42,6 +42,15 @@ embedding, duplication, and interface relationships. Boundary metadata and
 confidence determine whether recursive descent is structurally meaningful;
 Padagonia does not assign licensing acceptability or transformation strategy.
 
+### Amber hand-off
+
+Export the ontology and component graph as the versioned
+`padagonia.software-ontology/v1` contract. Amber uses boundary metadata and
+decomposition confidence to decide where recursive analysis should stop, then
+stores selected strategies and provenance requirements separately. This keeps
+Padagonia's structural authority independent from lwoodz's licensing
+observations and Amber's strategic recommendations.
+
 ## Build & Test
 
 ```bash
