@@ -109,7 +109,11 @@ pub struct ComponentGraph {
 
 impl ComponentGraph {
     pub fn validate(&self) -> Result<(), String> {
-        let ids: BTreeSet<&str> = self.components.iter().map(|item| item.id.as_str()).collect();
+        let ids: BTreeSet<&str> = self
+            .components
+            .iter()
+            .map(|item| item.id.as_str())
+            .collect();
         if !ids.contains(self.root.as_str()) {
             return Err(format!("root component '{}' is missing", self.root));
         }
@@ -120,7 +124,9 @@ impl ComponentGraph {
             if !ids.contains(relationship.source.as_str())
                 || !ids.contains(relationship.target.as_str())
             {
-                return Err("relationship endpoint is not present in the component graph".to_string());
+                return Err(
+                    "relationship endpoint is not present in the component graph".to_string(),
+                );
             }
             if !valid_confidence(relationship.confidence) {
                 return Err("relationship confidence must be between zero and one".to_string());
@@ -193,7 +199,10 @@ pub struct Ontology {
 impl Ontology {
     pub fn validate(&self) -> Result<(), String> {
         if self.schema_version != SOFTWARE_ONTOLOGY_SCHEMA_VERSION {
-            return Err(format!("unsupported ontology schema '{}'", self.schema_version));
+            return Err(format!(
+                "unsupported ontology schema '{}'",
+                self.schema_version
+            ));
         }
         self.graph.validate()
     }
@@ -229,7 +238,11 @@ mod tests {
     fn traverses_containment_without_following_other_relationships() {
         let graph = ComponentGraph {
             root: "x".to_string(),
-            components: vec![component("x", 2), component("x/f", 1), component("external", 1)],
+            components: vec![
+                component("x", 2),
+                component("x/f", 1),
+                component("external", 1),
+            ],
             relationships: RelationshipSet {
                 relationships: vec![
                     SoftwareRelationship {

@@ -32,9 +32,9 @@ pub mod value;
 pub mod app_config;
 pub mod cli;
 pub mod server;
-pub mod software_ontology;
 mod server_middleware;
 mod server_state;
+pub mod software_ontology;
 pub mod storage;
 
 pub use authorization::{
@@ -67,12 +67,12 @@ pub use outbox::{
 pub use projection::Projection;
 pub use provenance::Provenance;
 pub use query::{NodePage, NodeQuery, NumericAggregate, QueryEngine};
-pub use storage::{StoreError, MAX_BLOCK_COUNT, MAX_STORE_BYTES};
 pub use software_ontology::{
     ComponentGraph, DecompositionConfidence, Ontology as SoftwareOntology, RelationshipSet,
     SoftwareComponent, SoftwareComponentKind, SoftwareRelationship, SoftwareRelationshipKind,
     TransformationBoundary, SOFTWARE_ONTOLOGY_SCHEMA_VERSION,
 };
+pub use storage::{StoreError, MAX_BLOCK_COUNT, MAX_STORE_BYTES};
 pub use store::Store;
 pub use transaction::{CommitResult, JournalError, Mutation, Transaction, TransactionJournal};
 pub use value::Scalar;

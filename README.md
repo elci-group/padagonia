@@ -30,6 +30,18 @@
   request/operation limits, rate control, timeouts, metrics, and OpenAPI 3.1.
 - Deterministic synthetic benchmarks against NetworkX, SQLite, numpy, and hnswlib.
 
+## Software decomposition contract
+
+The `software_ontology` library module exposes the independently versioned
+`SoftwareOntology`, `ComponentGraph`, `RelationshipSet`, and
+`DecompositionConfidence` contract consumed by Amber. It models applications,
+repositories, packages, modules, interfaces, implementations, generated
+artifacts, adapters, tests, and build/runtime components, along with containment,
+dependency, implementation, wrapping, derivation, call, generation, adaptation,
+embedding, duplication, and interface relationships. Boundary metadata and
+confidence determine whether recursive descent is structurally meaningful;
+Padagonia does not assign licensing acceptability or transformation strategy.
+
 ## Build & Test
 
 ```bash
